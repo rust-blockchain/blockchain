@@ -14,7 +14,7 @@ impl<C: ExtrinsicContext, B, E> BlockBuilder<C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BuilderExecutor<C>,
 {
-	pub fn new(backend: B, executor: E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
+	pub fn new(backend: &B, executor: E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 

@@ -46,19 +46,10 @@ impl<C: BaseContext, B, E> Importer<C, B, E> where
 		Ok(())
 	}
 
-	pub fn commit(&mut self) -> Result<(), Error> {
+	pub fn pop(&mut self) -> Result<Operation<C, B>, Error> {
 		let mut operation = Operation::default();
 		mem::swap(&mut operation, &mut self.pending);
 
-		self.backend.commit(operation)
-			.map_err(|e| Error::Backend(Box::new(e)))?;
-
-		Ok(())
-	}
-
-	pub fn discard(&mut self) -> Result<(), Error> {
-		self.pending = Operation::default();
-
-		Ok(())
+		Ok(operation)
 	}
 }
