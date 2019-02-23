@@ -52,6 +52,11 @@ pub trait Backend<C: BaseContext>: Sized {
 		hash: &HashOf<C>,
 	) -> Result<usize, Self::Error>;
 
+	fn children_at(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<Vec<HashOf<C>>, Self::Error>;
+
 	fn state_at(
 		&self,
 		hash: &HashOf<C>,

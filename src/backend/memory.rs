@@ -63,7 +63,7 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 }
 
 pub struct MemoryBackendInner<C: BaseContext> {
-	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState, usize)>,
+	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState, usize, Vec<HashOf<C>>)>,
 	head: HashOf<C>,
 }
 
@@ -79,12 +79,21 @@ impl<C: BaseContext> MemoryBackendInner<C> where {
 		Ok(self.blocks_and_states.contains_key(hash))
 	}
 
+	fn children_at(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<Vec<HashOf<C>>, Error> {
+		self.blocks_and_states.get(hash)
+			.map(|(_, _, _, children)| children.clone())
+			.ok_or(Error::NotExist)
+	}
+
 	fn depth_at(
 		&self,
 		hash: &HashOf<C>
 	) -> Result<usize, Error> {
 		self.blocks_and_states.get(hash)
-		   .map(|(_, _, depth)| *depth)
+		   .map(|(_, _, depth, _)| *depth)
 		   .ok_or(Error::NotExist)
 	}
 
@@ -93,7 +102,7 @@ impl<C: BaseContext> MemoryBackendInner<C> where {
 		hash: &HashOf<C>,
 	) -> Result<BlockOf<C>, Error> {
 		self.blocks_and_states.get(hash)
-			.map(|(block, _, _)| block.clone())
+			.map(|(block, _, _, _)| block.clone())
 			.ok_or(Error::NotExist)
 	}
 
@@ -102,7 +111,7 @@ impl<C: BaseContext> MemoryBackendInner<C> where {
 		hash: &HashOf<C>,
 	) -> Result<MemoryState, Error> {
 		self.blocks_and_states.get(hash)
-			.map(|(_, state, _)| state.clone())
+			.map(|(_, state, _, _)| state.clone())
 			.ok_or(Error::NotExist)
 	}
 }
@@ -128,7 +137,7 @@ impl<C: BaseContext> MemoryBackend<C> where
 			storage: genesis_storage,
 		};
 		let mut blocks_and_states = HashMap::new();
-		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0));
+		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0, Vec::new()));
 
 		let inner = MemoryBackendInner {
 			blocks_and_states,
@@ -157,6 +166,14 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 	) -> Result<bool, Error> {
 		self.0.read().expect("backend lock is poisoned")
 			.contains(hash)
+	}
+
+	fn children_at(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<Vec<HashOf<C>>, Error> {
+		self.0.read().expect("backend lock is poisoned")
+			.children_at(hash)
 	}
 
 	fn depth_at(
@@ -189,6 +206,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 	) -> Result<(), Error> {
 		let mut this = self.0.write().expect("backend lock is poisoned");
 
+		let mut parent_hashes = HashMap::new();
 		let mut importing = HashMap::new();
 		let mut verifying = operation.import_block;
 
@@ -204,7 +222,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 							Some(this.depth_at(parent_hash)?)
 						} else if importing.contains_key(parent_hash) {
 							importing.get(parent_hash)
-								.map(|(_, _, depth)| *depth)
+								.map(|(_, _, depth, _)| *depth)
 						} else {
 							None
 						}
@@ -214,7 +232,10 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 
 				if let Some(depth) = depth {
 					progress = true;
-					importing.insert(*op.block.hash(), (op.block, op.state, depth));
+					if let Some(parent_hash) = op.block.parent_hash() {
+						parent_hashes.insert(*op.block.hash(), *parent_hash);
+					}
+					importing.insert(*op.block.hash(), (op.block, op.state, depth, Vec::new()));
 				} else {
 					next_verifying.push(op)
 				}
@@ -242,6 +263,13 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		}
 
 		this.blocks_and_states.extend(importing);
+
+		// Fix children at hashes.
+		for (hash, parent_hash) in parent_hashes {
+			this.blocks_and_states.get_mut(&parent_hash)
+				.expect("Parent hash are checked to exist or has been just imported; qed")
+				.3.push(hash);
+		}
 
 		if let Some(new_head) = operation.set_head {
 			this.head = new_head;
