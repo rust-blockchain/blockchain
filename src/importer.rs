@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::{mem, error as stderror};
+use std::{mem, fmt, error as stderror};
 use crate::traits::{HashOf, BlockOf, Block, Executor, Backend, Context, AsExternalities};
 
 pub struct ImportOperation<C: Context, B: Backend<C>> {
@@ -30,11 +30,34 @@ pub struct Importer<C: Context, B: Backend<C>, E> {
 	_marker: PhantomData<C>,
 }
 
+#[derive(Debug)]
 pub enum Error {
 	Backend(Box<stderror::Error>),
 	Executor(Box<stderror::Error>),
 	/// Block is genesis block and cannot be imported.
 	IsGenesis,
+}
+
+impl fmt::Display for Error {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			Error::Backend(_) => "Backend failure".fmt(f)?,
+			Error::Executor(_) => "Executor failure".fmt(f)?,
+			Error::IsGenesis => "Block is genesis block and cannot be imported".fmt(f)?,
+		}
+
+		Ok(())
+	}
+}
+
+impl stderror::Error for Error {
+	fn source(&self) -> Option<&(dyn stderror::Error + 'static)> {
+		match self {
+			Error::Backend(e) => Some(e.as_ref()),
+			Error::Executor(e) => Some(e.as_ref()),
+			Error::IsGenesis => None,
+		}
+	}
 }
 
 impl<C: Context, B, E> Importer<C, B, E> where

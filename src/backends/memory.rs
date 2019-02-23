@@ -10,12 +10,16 @@ use crate::importer::Operation;
 
 #[derive(Debug)]
 pub enum Error {
-	Other
+	IO,
 }
 
 impl fmt::Display for Error {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		"dummy error".fmt(f)
+		match self {
+			Error::IO => "IO failure".fmt(f)?,
+		}
+
+		Ok(())
 	}
 }
 
