@@ -1,0 +1,12 @@
+[package]
+name = "counter"
+version = "0.1.0"
+authors = ["Wei Tang <hi@that.world>"]
+edition = "2018"
+
+[dependencies]
+primitive-types = { version = "0.2", features = ["codec"] }
+parity-codec = "3.0"
+parity-codec-derive = "3.0"
+blockchain = { path = "../.." }
+sha3 = "0.8"

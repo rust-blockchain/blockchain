@@ -30,7 +30,7 @@ pub trait AsExternalities<E: ?Sized> {
 pub trait NullExternalities { }
 
 pub trait StorageExternalities {
-	fn read_storage(&self, key: &[u8]) -> Option<Vec<u8>>;
+	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<std::error::Error>>;
 	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>);
 	fn remove_storage(&mut self, key: &[u8]);
 }

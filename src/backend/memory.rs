@@ -43,8 +43,8 @@ impl AsExternalities<dyn NullExternalities> for MemoryState {
 }
 
 impl StorageExternalities for MemoryState {
-	fn read_storage(&self, key: &[u8]) -> Option<Vec<u8>> {
-		self.storage.get(key).map(|value| value.to_vec())
+	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<std::error::Error>> {
+		Ok(self.storage.get(key).map(|value| value.to_vec()))
 	}
 
 	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>) {
@@ -107,6 +107,7 @@ impl<C: BaseContext> MemoryBackendInner<C> where {
 	}
 }
 
+#[derive(Clone)]
 pub struct MemoryBackend<C: BaseContext>(Arc<RwLock<MemoryBackendInner<C>>>);
 
 impl<C: BaseContext> MemoryBackend<C> where
