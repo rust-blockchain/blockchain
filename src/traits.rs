@@ -42,20 +42,25 @@ pub trait Backend<C: BaseContext>: Sized {
 
 	fn head(&self) -> HashOf<C>;
 
+	fn contains(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<bool, Self::Error>;
+
 	fn depth_at(
 		&self,
 		hash: &HashOf<C>,
-	) -> Result<Option<usize>, Self::Error>;
+	) -> Result<usize, Self::Error>;
 
 	fn state_at(
 		&self,
 		hash: &HashOf<C>,
-	) -> Result<Option<Self::State>, Self::Error>;
+	) -> Result<Self::State, Self::Error>;
 
 	fn block_at(
 		&self,
 		hash: &HashOf<C>,
-	) -> Result<Option<BlockOf<C>>, Self::Error>;
+	) -> Result<BlockOf<C>, Self::Error>;
 
 	fn commit(
 		&self,

@@ -18,7 +18,6 @@
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
 use crate::traits::{BaseContext, HashOf, Backend, Block};
-use super::Error;
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -72,19 +71,11 @@ pub fn tree_route<C: BaseContext, B: Backend<C>>(
 	backend: &B,
 	from_hash: &HashOf<C>,
 	to_hash: &HashOf<C>
-) -> Result<Option<TreeRoute<C>>, Error> {
-	let mut from = backend.block_at(from_hash)
-		.map_err(|e| Error::Backend(Box::new(e)))?
-		.ok_or(Error::ParentNotFound)?;
-	let mut from_depth = backend.depth_at(from_hash)
-		.map_err(|e| Error::Backend(Box::new(e)))?
-		.ok_or(Error::ParentNotFound)?;
-	let mut to = backend.block_at(to_hash)
-		.map_err(|e| Error::Backend(Box::new(e)))?
-		.ok_or(Error::ParentNotFound)?;
-	let mut to_depth = backend.depth_at(to_hash)
-		.map_err(|e| Error::Backend(Box::new(e)))?
-		.ok_or(Error::ParentNotFound)?;
+) -> Result<Option<TreeRoute<C>>, B::Error> {
+	let mut from = backend.block_at(from_hash)?;
+	let mut from_depth = backend.depth_at(from_hash)?;
+	let mut to = backend.block_at(to_hash)?;
+	let mut to_depth = backend.depth_at(to_hash)?;
 
 	let mut from_branch = Vec::new();
 	let mut to_branch = Vec::new();
@@ -99,12 +90,8 @@ pub fn tree_route<C: BaseContext, B: Backend<C>>(
 		};
 
 		to_branch.push(*to.hash());
-		to = backend.block_at(&to_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
-		to_depth = backend.depth_at(&to_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
+		to = backend.block_at(&to_parent_hash)?;
+		to_depth = backend.depth_at(&to_parent_hash)?;
 	}
 
 	while from_depth > to_depth {
@@ -117,12 +104,8 @@ pub fn tree_route<C: BaseContext, B: Backend<C>>(
 		};
 
 		from_branch.push(*from.hash());
-		from = backend.block_at(&from_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
-		from_depth = backend.depth_at(&from_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
+		from = backend.block_at(&from_parent_hash)?;
+		from_depth = backend.depth_at(&from_parent_hash)?;
 	}
 
 	while from.hash() != to.hash() {
@@ -143,20 +126,12 @@ pub fn tree_route<C: BaseContext, B: Backend<C>>(
 		};
 
 		to_branch.push(*to.hash());
-		to = backend.block_at(&to_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
-		to_depth = backend.depth_at(&to_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
+		to = backend.block_at(&to_parent_hash)?;
+		to_depth = backend.depth_at(&to_parent_hash)?;
 
 		from_branch.push(*from.hash());
-		from = backend.block_at(&from_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
-		from_depth = backend.depth_at(&from_parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
+		from = backend.block_at(&from_parent_hash)?;
+		from_depth = backend.depth_at(&from_parent_hash)?;
 	}
 
 	// add the pivot block. and append the reversed to-branch (note that it's reverse order originalls)

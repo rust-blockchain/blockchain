@@ -16,12 +16,10 @@ impl<C: ExtrinsicContext, B, E> BlockBuilder<C, B, E> where
 {
 	pub fn new(backend: B, executor: E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
+			.map_err(|e| Error::Backend(Box::new(e)))?;
 
 		let mut pending_state = backend.state_at(parent_hash)
-			.map_err(|e| Error::Backend(Box::new(e)))?
-			.ok_or(Error::ParentNotFound)?;
+			.map_err(|e| Error::Backend(Box::new(e)))?;
 
 		executor.initialize_block(&mut pending_block, pending_state.as_externalities())
 			.map_err(|e| Error::Executor(Box::new(e)))?;

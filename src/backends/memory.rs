@@ -12,6 +12,7 @@ use crate::chain::Operation;
 pub enum Error {
 	IO,
 	InvalidOperation,
+	NotExist,
 }
 
 impl fmt::Display for Error {
@@ -19,6 +20,7 @@ impl fmt::Display for Error {
 		match self {
 			Error::IO => "IO failure".fmt(f)?,
 			Error::InvalidOperation => "The operation provided is invalid".fmt(f)?,
+			Error::NotExist => "Block does not exist".fmt(f)?,
 		}
 
 		Ok(())
@@ -95,34 +97,46 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 		this.head
 	}
 
+	fn contains(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<bool, Error> {
+		let this = self.read().expect("backend lock is poisoned");
+
+		Ok(this.blocks_and_states.contains_key(hash))
+	}
+
 	fn depth_at(
 		&self,
 		hash: &HashOf<C>
-	) -> Result<Option<usize>, Error> {
+	) -> Result<usize, Error> {
 		let this = self.read().expect("backend lock is poisoned");
 
-		Ok(this.blocks_and_states.get(hash)
-		   .map(|(_, _, depth)| *depth))
+		this.blocks_and_states.get(hash)
+		   .map(|(_, _, depth)| *depth)
+		   .ok_or(Error::NotExist)
 	}
 
 	fn block_at(
 		&self,
 		hash: &HashOf<C>,
-	) -> Result<Option<BlockOf<C>>, Error> {
+	) -> Result<BlockOf<C>, Error> {
 		let this = self.read().expect("backend lock is poisoned");
 
-		Ok(this.blocks_and_states.get(hash)
-		   .map(|(block, _, _)| block.clone()))
+		this.blocks_and_states.get(hash)
+			.map(|(block, _, _)| block.clone())
+			.ok_or(Error::NotExist)
 	}
 
 	fn state_at(
 		&self,
 		hash: &HashOf<C>,
-	) -> Result<Option<MemoryState>, Error> {
+	) -> Result<MemoryState, Error> {
 		let this = self.read().expect("backend lock is poisoned");
 
-		Ok(this.blocks_and_states.get(hash)
-		   .map(|(_, state, _)| state.clone()))
+		this.blocks_and_states.get(hash)
+			.map(|(_, state, _)| state.clone())
+			.ok_or(Error::NotExist)
 	}
 
 	fn commit(
