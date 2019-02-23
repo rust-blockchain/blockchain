@@ -23,7 +23,7 @@ impl<C: Context, B> Default for Operation<C, B> where
 	}
 }
 
-pub struct Chain<C: Context, B: Backend<C>, E> {
+pub struct Importer<C: Context, B: Backend<C>, E> {
 	executor: E,
 	backend: B,
 	pending: Operation<C, B>,
@@ -37,7 +37,7 @@ pub enum Error {
 	IsGenesis,
 }
 
-impl<C: Context, B, E> Chain<C, B, E> where
+impl<C: Context, B, E> Importer<C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: Executor<C>,
 {
