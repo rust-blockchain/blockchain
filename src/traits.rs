@@ -60,6 +60,29 @@ pub trait BlockExecutor<C: BaseContext>: Sized {
 	) -> Result<(), Self::Error>;
 }
 
+pub trait BuilderExecutor<C: ExtrinsicContext>: Sized {
+	type Error: stderror::Error + 'static;
+
+	fn initialize_block(
+		&self,
+		block: &mut BlockOf<C>,
+		state: &mut ExternalitiesOf<C>,
+	) -> Result<(), Self::Error>;
+
+	fn apply_extrinsic(
+		&self,
+		block: &mut BlockOf<C>,
+		extrinsic: ExtrinsicOf<C>,
+		state: &mut ExternalitiesOf<C>,
+	) -> Result<(), Self::Error>;
+
+	fn finalize_block(
+		&self,
+		block: &mut BlockOf<C>,
+		state: &mut ExternalitiesOf<C>,
+	) -> Result<(), Self::Error>;
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
