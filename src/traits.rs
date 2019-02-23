@@ -20,6 +20,13 @@ pub trait AsExternalities<E: ?Sized> {
 	fn as_externalities(&mut self) -> &mut E;
 }
 
+pub trait NullExternalities { }
+
+pub trait StorageExternalities {
+	fn read_storage(&self, key: &[u8]) -> Vec<u8>;
+	fn write_storage(&self, key: &[u8], value: &[u8]);
+}
+
 pub trait Backend<C: Context>: Sized {
 	type State: AsExternalities<ExternalitiesOf<C>>;
 	type Operation;
