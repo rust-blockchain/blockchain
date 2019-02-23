@@ -62,12 +62,56 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
-pub struct MemoryBackend<C: BaseContext> {
+pub struct MemoryBackendInner<C: BaseContext> {
 	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState, usize)>,
 	head: HashOf<C>,
 }
 
-impl<C: BaseContext> MemoryBackend<C> where {
+impl<C: BaseContext> MemoryBackendInner<C> where {
+	fn head(&self) -> HashOf<C> {
+		self.head
+	}
+
+	fn contains(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<bool, Error> {
+		Ok(self.blocks_and_states.contains_key(hash))
+	}
+
+	fn depth_at(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<usize, Error> {
+		self.blocks_and_states.get(hash)
+		   .map(|(_, _, depth)| *depth)
+		   .ok_or(Error::NotExist)
+	}
+
+	fn block_at(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<BlockOf<C>, Error> {
+		self.blocks_and_states.get(hash)
+			.map(|(block, _, _)| block.clone())
+			.ok_or(Error::NotExist)
+	}
+
+	fn state_at(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<MemoryState, Error> {
+		self.blocks_and_states.get(hash)
+			.map(|(_, state, _)| state.clone())
+			.ok_or(Error::NotExist)
+	}
+}
+
+pub struct MemoryBackend<C: BaseContext>(Arc<RwLock<MemoryBackendInner<C>>>);
+
+impl<C: BaseContext> MemoryBackend<C> where
+	MemoryState: AsExternalities<ExternalitiesOf<C>>
+{
 	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
 		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
 
@@ -78,14 +122,16 @@ impl<C: BaseContext> MemoryBackend<C> where {
 		let mut blocks_and_states = HashMap::new();
 		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0));
 
-		Self {
+		let inner = MemoryBackendInner {
 			blocks_and_states,
 			head: genesis_hash,
-		}
+		};
+
+		MemoryBackend(Arc::new(RwLock::new(inner)))
 	}
 }
 
-impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
+impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
 {
 	type State = MemoryState;
@@ -93,57 +139,47 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 	type Error = Error;
 
 	fn head(&self) -> HashOf<C> {
-		let this = self.read().expect("backend lock is poisoned");
-		this.head
+		self.0.read().expect("backend lock is poisoned")
+			.head()
 	}
 
 	fn contains(
 		&self,
 		hash: &HashOf<C>
 	) -> Result<bool, Error> {
-		let this = self.read().expect("backend lock is poisoned");
-
-		Ok(this.blocks_and_states.contains_key(hash))
+		self.0.read().expect("backend lock is poisoned")
+			.contains(hash)
 	}
 
 	fn depth_at(
 		&self,
 		hash: &HashOf<C>
 	) -> Result<usize, Error> {
-		let this = self.read().expect("backend lock is poisoned");
-
-		this.blocks_and_states.get(hash)
-		   .map(|(_, _, depth)| *depth)
-		   .ok_or(Error::NotExist)
+		self.0.read().expect("backend lock is poisoned")
+			.depth_at(hash)
 	}
 
 	fn block_at(
 		&self,
 		hash: &HashOf<C>,
 	) -> Result<BlockOf<C>, Error> {
-		let this = self.read().expect("backend lock is poisoned");
-
-		this.blocks_and_states.get(hash)
-			.map(|(block, _, _)| block.clone())
-			.ok_or(Error::NotExist)
+		self.0.read().expect("backend lock is poisoned")
+			.block_at(hash)
 	}
 
 	fn state_at(
 		&self,
 		hash: &HashOf<C>,
 	) -> Result<MemoryState, Error> {
-		let this = self.read().expect("backend lock is poisoned");
-
-		this.blocks_and_states.get(hash)
-			.map(|(_, state, _)| state.clone())
-			.ok_or(Error::NotExist)
+		self.0.read().expect("backend lock is poisoned")
+			.state_at(hash)
 	}
 
 	fn commit(
 		&self,
 		operation: Operation<C, Self>,
 	) -> Result<(), Error> {
-		let mut this = self.write().expect("backend lock is poisoned");
+		let mut this = self.0.write().expect("backend lock is poisoned");
 
 		let mut importing = HashMap::new();
 		let mut verifying = operation.import_block;
@@ -156,9 +192,8 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 			for op in verifying {
 				let depth = match op.block.parent_hash() {
 					Some(parent_hash) => {
-						if this.blocks_and_states.contains_key(parent_hash) {
-							this.blocks_and_states.get(parent_hash)
-								.map(|(_, _, depth)| *depth)
+						if this.contains(parent_hash)? {
+							Some(this.depth_at(parent_hash)?)
 						} else if importing.contains_key(parent_hash) {
 							importing.get(parent_hash)
 								.map(|(_, _, depth)| *depth)
@@ -262,10 +297,13 @@ mod tests {
 
 	#[test]
 	fn all_traits_for_importer_are_satisfied() {
-		let backend: Arc<RwLock<MemoryBackend<DummyContext>>> = Arc::new(RwLock::new(MemoryBackend {
-			blocks_and_states: Default::default(),
-			head: Default::default(),
-		}));
+		let backend = MemoryBackend::with_genesis(
+			DummyBlock {
+				hash: 1,
+				parent_hash: 0,
+			},
+			Default::default()
+		);
 		let executor: Arc<DummyExecutor> = Arc::new(DummyExecutor);
 		let _ = Importer::new(backend, executor);
 	}
