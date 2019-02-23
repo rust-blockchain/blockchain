@@ -1,7 +1,7 @@
 mod importer;
 mod block_builder;
 
-pub use self::importer::Importer;
+pub use self::importer::{SharedBackend, Importer};
 pub use self::block_builder::BlockBuilder;
 
 use std::{fmt, error as stderror};

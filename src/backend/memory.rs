@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use std::{fmt, error as stderror};
 
 use crate::traits::{
@@ -62,14 +61,25 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
-pub struct MemoryBackendInner<C: BaseContext> {
+pub struct MemoryBackend<C: BaseContext> {
 	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState, usize, Vec<HashOf<C>>)>,
 	head: HashOf<C>,
+	genesis: HashOf<C>,
 }
 
-impl<C: BaseContext> MemoryBackendInner<C> where {
+impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
+	MemoryState: AsExternalities<ExternalitiesOf<C>>
+{
+	type State = MemoryState;
+	type Operation = Operation<C, Self>;
+	type Error = Error;
+
 	fn head(&self) -> HashOf<C> {
 		self.head
+	}
+
+	fn genesis(&self) -> HashOf<C> {
+		self.genesis
 	}
 
 	fn contains(
@@ -114,98 +124,11 @@ impl<C: BaseContext> MemoryBackendInner<C> where {
 			.map(|(_, state, _, _)| state.clone())
 			.ok_or(Error::NotExist)
 	}
-}
-
-pub struct MemoryBackend<C: BaseContext>(Arc<RwLock<MemoryBackendInner<C>>>);
-
-impl<C: BaseContext> Clone for MemoryBackend<C> where
-	MemoryState: AsExternalities<ExternalitiesOf<C>>
-{
-	fn clone(&self) -> Self {
-		MemoryBackend(self.0.clone())
-	}
-}
-
-impl<C: BaseContext> MemoryBackend<C> where
-	MemoryState: AsExternalities<ExternalitiesOf<C>>
-{
-	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
-		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
-
-		let genesis_hash = *block.hash();
-		let genesis_state = MemoryState {
-			storage: genesis_storage,
-		};
-		let mut blocks_and_states = HashMap::new();
-		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0, Vec::new()));
-
-		let inner = MemoryBackendInner {
-			blocks_and_states,
-			head: genesis_hash,
-		};
-
-		MemoryBackend(Arc::new(RwLock::new(inner)))
-	}
-}
-
-impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
-	MemoryState: AsExternalities<ExternalitiesOf<C>>
-{
-	type State = MemoryState;
-	type Operation = Operation<C, Self>;
-	type Error = Error;
-
-	fn head(&self) -> HashOf<C> {
-		self.0.read().expect("backend lock is poisoned")
-			.head()
-	}
-
-	fn contains(
-		&self,
-		hash: &HashOf<C>
-	) -> Result<bool, Error> {
-		self.0.read().expect("backend lock is poisoned")
-			.contains(hash)
-	}
-
-	fn children_at(
-		&self,
-		hash: &HashOf<C>
-	) -> Result<Vec<HashOf<C>>, Error> {
-		self.0.read().expect("backend lock is poisoned")
-			.children_at(hash)
-	}
-
-	fn depth_at(
-		&self,
-		hash: &HashOf<C>
-	) -> Result<usize, Error> {
-		self.0.read().expect("backend lock is poisoned")
-			.depth_at(hash)
-	}
-
-	fn block_at(
-		&self,
-		hash: &HashOf<C>,
-	) -> Result<BlockOf<C>, Error> {
-		self.0.read().expect("backend lock is poisoned")
-			.block_at(hash)
-	}
-
-	fn state_at(
-		&self,
-		hash: &HashOf<C>,
-	) -> Result<MemoryState, Error> {
-		self.0.read().expect("backend lock is poisoned")
-			.state_at(hash)
-	}
 
 	fn commit(
-		&self,
+		&mut self,
 		operation: Operation<C, Self>,
 	) -> Result<(), Error> {
-		let mut this = self.0.write().expect("backend lock is poisoned");
-
 		let mut parent_hashes = HashMap::new();
 		let mut importing = HashMap::new();
 		let mut verifying = operation.import_block;
@@ -218,8 +141,8 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 			for op in verifying {
 				let depth = match op.block.parent_hash() {
 					Some(parent_hash) => {
-						if this.contains(parent_hash)? {
-							Some(this.depth_at(parent_hash)?)
+						if self.contains(parent_hash)? {
+							Some(self.depth_at(parent_hash)?)
 						} else if importing.contains_key(parent_hash) {
 							importing.get(parent_hash)
 								.map(|(_, _, depth, _)| *depth)
@@ -254,7 +177,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 
 		// Do precheck to make sure the head going to set exists.
 		if let Some(new_head) = &operation.set_head {
-			let head_exists = this.blocks_and_states.contains_key(new_head) ||
+			let head_exists = self.blocks_and_states.contains_key(new_head) ||
 				importing.contains_key(new_head);
 
 			if !head_exists {
@@ -262,20 +185,41 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 			}
 		}
 
-		this.blocks_and_states.extend(importing);
+		self.blocks_and_states.extend(importing);
 
 		// Fix children at hashes.
 		for (hash, parent_hash) in parent_hashes {
-			this.blocks_and_states.get_mut(&parent_hash)
+			self.blocks_and_states.get_mut(&parent_hash)
 				.expect("Parent hash are checked to exist or has been just imported; qed")
 				.3.push(hash);
 		}
 
 		if let Some(new_head) = operation.set_head {
-			this.head = new_head;
+			self.head = new_head;
 		}
 
 		Ok(())
+	}
+}
+
+impl<C: BaseContext> MemoryBackend<C> where
+	MemoryState: AsExternalities<ExternalitiesOf<C>>
+{
+	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
+
+		let genesis_hash = *block.hash();
+		let genesis_state = MemoryState {
+			storage: genesis_storage,
+		};
+		let mut blocks_and_states = HashMap::new();
+		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0, Vec::new()));
+
+		MemoryBackend {
+			blocks_and_states,
+			genesis: genesis_hash,
+			head: genesis_hash,
+		}
 	}
 }
 
@@ -283,7 +227,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 mod tests {
 	use super::*;
 	use crate::traits::*;
-	use crate::chain::Importer;
+	use crate::chain::SharedBackend;
 
 	#[derive(Clone)]
 	pub struct DummyBlock {
@@ -340,6 +284,7 @@ mod tests {
 			Default::default()
 		);
 		let executor = DummyExecutor;
-		let _ = Importer::new(backend, executor);
+		let shared = SharedBackend::new(backend);
+		let _ = shared.begin_import(&executor);
 	}
 }

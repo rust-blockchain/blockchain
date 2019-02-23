@@ -5,10 +5,10 @@ use primitive_types::H256;
 use blockchain::traits::{
 	Block as BlockT, BlockExecutor, BaseContext, ExtrinsicContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf, ExtrinsicOf, Backend,
+	BlockOf, ExtrinsicOf,
 };
 use blockchain::backend::MemoryBackend;
-use blockchain::chain::{Importer, BlockBuilder};
+use blockchain::chain::{BlockBuilder, SharedBackend};
 use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
 use sha3::{Digest, Sha3_256};
@@ -186,29 +186,34 @@ fn main() {
 		block
 	};
 
-	let backend_build = MemoryBackend::with_genesis(genesis_block.clone(), Default::default());
-	let backend_import = MemoryBackend::with_genesis(genesis_block.clone(), Default::default());
-	let mut importer = Importer::new(backend_import.clone(), Executor);
-	let mut build_importer = Importer::new(backend_build.clone(), Executor);
+	let backend_build = SharedBackend::new(
+		MemoryBackend::with_genesis(genesis_block.clone(), Default::default())
+	);
+	let backend_import = SharedBackend::new(
+		MemoryBackend::with_genesis(genesis_block.clone(), Default::default())
+	);
 
 	loop {
 		let head = backend_build.head();
+		let executor = Executor;
 		println!("Building on top of {}", head);
 
 		// Build a block.
-		let mut builder = BlockBuilder::new(&backend_build, Executor, &head).unwrap();
+		let mut builder = BlockBuilder::new(&backend_build, &executor, &head).unwrap();
 		builder.apply_extrinsic(Extrinsic::Add(5)).unwrap();
 		let op = builder.finalize().unwrap();
 		let block = op.block.clone();
 
 		// Import the built block.
+		let mut build_importer = backend_build.begin_import(&executor);
 		build_importer.import_raw(op).unwrap();
 		build_importer.set_head(*block.hash()).unwrap();
-		backend_build.commit(build_importer.pop().unwrap()).unwrap();
+		build_importer.commit().unwrap();
 
 		// Import the block again to importer.
+		let mut importer = backend_import.begin_import(&executor);
 		importer.import_block(block.clone()).unwrap();
 		importer.set_head(*block.hash()).unwrap();
-		backend_import.commit(importer.pop().unwrap()).unwrap();
+		importer.commit().unwrap();
 	}
 }

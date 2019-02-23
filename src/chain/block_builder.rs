@@ -1,20 +1,20 @@
-use super::{Error, Operation, ImportOperation};
+use super::{Error, Operation, ImportOperation, SharedBackend};
 use crate::traits::{
 	BaseContext, ExtrinsicContext, Backend, BuilderExecutor,
 	BlockOf, HashOf, AsExternalities, ExtrinsicOf,
 };
 
-pub struct BlockBuilder<C: BaseContext, B: Backend<C>, E> {
-	executor: E,
+pub struct BlockBuilder<'a, C: BaseContext, B: Backend<C>, E> {
+	executor: &'a E,
 	pending_block: BlockOf<C>,
 	pending_state: B::State,
 }
 
-impl<C: ExtrinsicContext, B, E> BlockBuilder<C, B, E> where
+impl<'a, C: ExtrinsicContext, B, E> BlockBuilder<'a, C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BuilderExecutor<C>,
 {
-	pub fn new(backend: &B, executor: E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
+	pub fn new(backend: &SharedBackend<C, B>, executor: &'a E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 

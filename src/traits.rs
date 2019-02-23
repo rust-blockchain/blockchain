@@ -40,6 +40,7 @@ pub trait Backend<C: BaseContext>: Sized {
 	type Operation;
 	type Error: stderror::Error + 'static;
 
+	fn genesis(&self) -> HashOf<C>;
 	fn head(&self) -> HashOf<C>;
 
 	fn contains(
@@ -68,7 +69,7 @@ pub trait Backend<C: BaseContext>: Sized {
 	) -> Result<BlockOf<C>, Self::Error>;
 
 	fn commit(
-		&self,
+		&mut self,
 		operation: Self::Operation,
 	) -> Result<(), Self::Error>;
 }
