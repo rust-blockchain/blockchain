@@ -1,10 +1,11 @@
 use std::error as stderror;
+use std::hash;
 
 pub trait Block {
-	type Hash;
+	type Hash: Copy + Eq + hash::Hash;
 
-	fn hash(&self) -> Self::Hash;
-	fn parent_hash(&self) -> Option<Self::Hash>;
+	fn hash(&self) -> &Self::Hash;
+	fn parent_hash(&self) -> Option<&Self::Hash>;
 }
 
 pub type ExternalitiesOf<C> = <C as Context>::Externalities;
@@ -35,8 +36,8 @@ pub trait Backend<C: Context>: Sized {
 
 	fn state_at(
 		&self,
-		hash: HashOf<C>,
-	) -> Result<Self::State, Self::Error>;
+		hash: &HashOf<C>,
+	) -> Result<Option<Self::State>, Self::Error>;
 
 	fn commit(
 		&self,
@@ -64,13 +65,16 @@ mod tests {
 
 	use crate::importer::Operation;
 
-	pub struct DummyBlock(usize);
+	pub struct DummyBlock {
+		hash: usize,
+		parent_hash: usize,
+	}
 
 	impl Block for DummyBlock {
 		type Hash = usize;
 
-		fn hash(&self) -> usize { self.0 }
-		fn parent_hash(&self) -> Option<usize> { if self.0 == 0 { None } else { Some(self.0 - 1) } }
+		fn hash(&self) -> &usize { &self.hash }
+		fn parent_hash(&self) -> Option<&usize> { if self.parent_hash == 0 { None } else { Some(&self.parent_hash) } }
 	}
 
 	pub struct DummyBackendInner {
@@ -87,12 +91,15 @@ mod tests {
 
 		fn state_at(
 			&self,
-			_hash: usize
-		) -> Result<DummyState, DummyError> {
-			let _ = self.read().expect("backend lock is poisoned");
-
-			Ok(DummyState {
-				_backend: self.clone()
+			hash: &usize
+		) -> Result<Option<DummyState>, DummyError> {
+			let this = self.read().expect("backend lock is poisoned");
+			Ok(if this.blocks.contains_key(hash) {
+				Some(DummyState {
+					_backend: self.clone()
+				})
+			} else {
+				None
 			})
 		}
 
@@ -102,7 +109,7 @@ mod tests {
 		) -> Result<(), DummyError> {
 			let mut this = self.write().expect("backend lock is poisoned");
 			for block in operation.import_block {
-				this.blocks.insert(block.block.0, block.block);
+				this.blocks.insert(*block.block.hash(), block.block);
 			}
 			if let Some(head) = operation.set_head {
 				this.head = head;

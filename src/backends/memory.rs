@@ -1,22 +1,24 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::{fmt, error as stderror};
 
 use crate::traits::{
 	HashOf, BlockOf, ExternalitiesOf, AsExternalities, Context, Backend,
-	NullExternalities, StorageExternalities,
+	NullExternalities, StorageExternalities, Block,
 };
 use crate::importer::Operation;
 
 #[derive(Debug)]
 pub enum Error {
 	IO,
+	InvalidOperation,
 }
 
 impl fmt::Display for Error {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			Error::IO => "IO failure".fmt(f)?,
+			Error::InvalidOperation => "The operation provided is invalid".fmt(f)?,
 		}
 
 		Ok(())
@@ -25,6 +27,7 @@ impl fmt::Display for Error {
 
 impl stderror::Error for Error { }
 
+#[derive(Clone)]
 pub struct MemoryState {
 	storage: HashMap<Vec<u8>, Vec<u8>>,
 }
@@ -59,6 +62,25 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 
 pub struct MemoryBackend<C: Context> {
 	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState)>,
+	head: HashOf<C>,
+}
+
+impl<C: Context> MemoryBackend<C> where {
+	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
+
+		let genesis_hash = *block.hash();
+		let genesis_state = MemoryState {
+			storage: genesis_storage,
+		};
+		let mut blocks_and_states = HashMap::new();
+		blocks_and_states.insert(*block.hash(), (block, genesis_state));
+
+		Self {
+			blocks_and_states,
+			head: genesis_hash,
+		}
+	}
 }
 
 impl<C: Context> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
@@ -70,16 +92,58 @@ impl<C: Context> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 
 	fn state_at(
 		&self,
-		_hash: HashOf<C>,
-	) -> Result<MemoryState, Error> {
-		unimplemented!()
+		hash: &HashOf<C>,
+	) -> Result<Option<MemoryState>, Error> {
+		let this = self.read().expect("backend lock is poisoned");
+
+		Ok(this.blocks_and_states.get(hash)
+		   .map(|(_, state)| state.clone()))
 	}
 
 	fn commit(
 		&self,
 		operation: Operation<C, Self>,
 	) -> Result<(), Error> {
-		unimplemented!()
+		let mut this = self.write().expect("backend lock is poisoned");
+
+		let importing_hashes = operation.import_block
+			.iter()
+			.map(|op| *op.block.hash())
+			.collect::<HashSet<_>>();
+
+		// Do precheck to make sure the import operation is valid.
+		for op in &operation.import_block {
+			let parent_contains_in_backend_or_importing = op.block.parent_hash()
+				.map(|parent_hash| {
+					this.blocks_and_states.contains_key(parent_hash) ||
+						importing_hashes.contains(parent_hash)
+				})
+				.unwrap_or(true);
+
+			if !parent_contains_in_backend_or_importing {
+				return Err(Error::InvalidOperation);
+			}
+		}
+
+		// Do precheck to make sure the head going to set exists.
+		if let Some(new_head) = &operation.set_head {
+			let head_exists = this.blocks_and_states.contains_key(new_head) ||
+				importing_hashes.contains(new_head);
+
+			if !head_exists {
+				return Err(Error::InvalidOperation);
+			}
+		}
+
+		for op in operation.import_block {
+			this.blocks_and_states.insert(*op.block.hash(), (op.block, op.state));
+		}
+
+		if let Some(new_head) = operation.set_head {
+			this.head = new_head;
+		}
+
+		Ok(())
 	}
 }
 
@@ -91,13 +155,16 @@ mod tests {
 	use crate::traits::*;
 	use crate::importer::Importer;
 
-	pub struct DummyBlock(usize);
+	pub struct DummyBlock {
+		hash: usize,
+		parent_hash: usize,
+	}
 
 	impl Block for DummyBlock {
 		type Hash = usize;
 
-		fn hash(&self) -> usize { self.0 }
-		fn parent_hash(&self) -> Option<usize> { if self.0 == 0 { None } else { Some(self.0 - 1) } }
+		fn hash(&self) -> &usize { &self.hash }
+		fn parent_hash(&self) -> Option<&usize> { if self.parent_hash == 0 { None } else { Some(&self.parent_hash) } }
 	}
 
 	pub trait CombinedExternalities: NullExternalities + StorageExternalities { }
@@ -135,6 +202,7 @@ mod tests {
 	fn all_traits_for_importer_are_satisfied() {
 		let backend: Arc<RwLock<MemoryBackend<DummyContext>>> = Arc::new(RwLock::new(MemoryBackend {
 			blocks_and_states: Default::default(),
+			head: Default::default(),
 		}));
 		let executor: Arc<DummyExecutor> = Arc::new(DummyExecutor);
 		let _ = Importer::new(backend, executor);

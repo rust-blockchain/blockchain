@@ -36,6 +36,8 @@ pub enum Error {
 	Executor(Box<stderror::Error>),
 	/// Block is genesis block and cannot be imported.
 	IsGenesis,
+	/// Parent is not in the backend so block cannot be imported.
+	ParentNotFound,
 }
 
 impl fmt::Display for Error {
@@ -44,6 +46,7 @@ impl fmt::Display for Error {
 			Error::Backend(_) => "Backend failure".fmt(f)?,
 			Error::Executor(_) => "Executor failure".fmt(f)?,
 			Error::IsGenesis => "Block is genesis block and cannot be imported".fmt(f)?,
+			Error::ParentNotFound => "Parent block cannot be found".fmt(f)?,
 		}
 
 		Ok(())
@@ -55,7 +58,7 @@ impl stderror::Error for Error {
 		match self {
 			Error::Backend(e) => Some(e.as_ref()),
 			Error::Executor(e) => Some(e.as_ref()),
-			Error::IsGenesis => None,
+			Error::IsGenesis | Error::ParentNotFound => None,
 		}
 	}
 }
@@ -73,9 +76,10 @@ impl<C: Context, B, E> Importer<C, B, E> where
 	}
 
 	pub fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Error> {
-		let mut state = self.backend.state_at(
-			block.parent_hash().ok_or(Error::IsGenesis)?
-		).map_err(|e| Error::Backend(Box::new(e)))?;
+		let mut state = self.backend
+			.state_at(block.parent_hash().ok_or(Error::IsGenesis)?)
+			.map_err(|e| Error::Backend(Box::new(e)))?
+			.ok_or(Error::ParentNotFound)?;
 		self.executor.execute_block(&block, state.as_externalities())
 			.map_err(|e| Error::Executor(Box::new(e)))?;
 
