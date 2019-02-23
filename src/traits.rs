@@ -23,8 +23,9 @@ pub trait AsExternalities<E: ?Sized> {
 pub trait NullExternalities { }
 
 pub trait StorageExternalities {
-	fn read_storage(&self, key: &[u8]) -> Vec<u8>;
-	fn write_storage(&self, key: &[u8], value: &[u8]);
+	fn read_storage(&self, key: &[u8]) -> Option<Vec<u8>>;
+	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>);
+	fn remove_storage(&mut self, key: &[u8]);
 }
 
 pub trait Backend<C: Context>: Sized {

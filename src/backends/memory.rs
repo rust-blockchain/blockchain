@@ -38,12 +38,16 @@ impl AsExternalities<dyn NullExternalities> for MemoryState {
 }
 
 impl StorageExternalities for MemoryState {
-	fn read_storage(&self, key: &[u8]) -> Vec<u8> {
-		unimplemented!()
+	fn read_storage(&self, key: &[u8]) -> Option<Vec<u8>> {
+		self.storage.get(key).map(|value| value.to_vec())
 	}
 
-	fn write_storage(&self, key: &[u8], value: &[u8]) {
-		unimplemented!()
+	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>) {
+		self.storage.insert(key, value);
+	}
+
+	fn remove_storage(&mut self, key: &[u8]) {
+		self.storage.remove(key);
 	}
 }
 
