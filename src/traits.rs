@@ -39,6 +39,8 @@ pub trait Backend<C: BaseContext>: Sized {
 	type Operation;
 	type Error: stderror::Error + 'static;
 
+	fn head(&self) -> HashOf<C>;
+
 	fn state_at(
 		&self,
 		hash: &HashOf<C>,
@@ -53,6 +55,12 @@ pub trait Backend<C: BaseContext>: Sized {
 		&self,
 		operation: Self::Operation,
 	) -> Result<(), Self::Error>;
+}
+
+pub trait CommitBlock<C: BaseContext> {
+	type Error: stderror::Error + 'static;
+
+	fn commit_block(&mut self, block: BlockOf<C>) -> Result<(), Self::Error>;
 }
 
 pub trait BlockExecutor<C: BaseContext>: Sized {
@@ -122,6 +130,11 @@ mod tests {
 		type State = DummyState;
 		type Error = DummyError;
 		type Operation = Operation<DummyContext, Self>;
+
+		fn head(&self) -> usize {
+			let this = self.read().expect("backend lock is poisoned");
+			this.head
+		}
 
 		fn block_at(
 			&self,

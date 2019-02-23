@@ -90,6 +90,11 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 	type Operation = Operation<C, Self>;
 	type Error = Error;
 
+	fn head(&self) -> HashOf<C> {
+		let this = self.read().expect("backend lock is poisoned");
+		this.head
+	}
+
 	fn block_at(
 		&self,
 		hash: &HashOf<C>,
