@@ -61,8 +61,15 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
+struct BlockData<C: BaseContext> {
+	block: BlockOf<C>,
+	state: MemoryState,
+	depth: usize,
+	children: Vec<HashOf<C>>
+}
+
 pub struct MemoryBackend<C: BaseContext> {
-	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState, usize, Vec<HashOf<C>>)>,
+	blocks_and_states: HashMap<HashOf<C>, BlockData<C>>,
 	head: HashOf<C>,
 	genesis: HashOf<C>,
 }
@@ -94,7 +101,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		hash: &HashOf<C>,
 	) -> Result<Vec<HashOf<C>>, Error> {
 		self.blocks_and_states.get(hash)
-			.map(|(_, _, _, children)| children.clone())
+			.map(|data| data.children.clone())
 			.ok_or(Error::NotExist)
 	}
 
@@ -103,7 +110,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		hash: &HashOf<C>
 	) -> Result<usize, Error> {
 		self.blocks_and_states.get(hash)
-		   .map(|(_, _, depth, _)| *depth)
+		   .map(|data| data.depth)
 		   .ok_or(Error::NotExist)
 	}
 
@@ -112,7 +119,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		hash: &HashOf<C>,
 	) -> Result<BlockOf<C>, Error> {
 		self.blocks_and_states.get(hash)
-			.map(|(block, _, _, _)| block.clone())
+			.map(|data| data.block.clone())
 			.ok_or(Error::NotExist)
 	}
 
@@ -121,7 +128,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		hash: &HashOf<C>,
 	) -> Result<MemoryState, Error> {
 		self.blocks_and_states.get(hash)
-			.map(|(_, state, _, _)| state.clone())
+			.map(|data| data.state.clone())
 			.ok_or(Error::NotExist)
 	}
 
@@ -130,7 +137,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		operation: Operation<C, Self>,
 	) -> Result<(), Error> {
 		let mut parent_hashes = HashMap::new();
-		let mut importing = HashMap::new();
+		let mut importing: HashMap<HashOf<C>, BlockData<C>> = HashMap::new();
 		let mut verifying = operation.import_block;
 
 		// Do precheck to make sure the import operation is valid.
@@ -145,7 +152,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 							Some(self.depth_at(parent_hash)?)
 						} else if importing.contains_key(parent_hash) {
 							importing.get(parent_hash)
-								.map(|(_, _, depth, _)| *depth)
+								.map(|data| data.depth)
 						} else {
 							None
 						}
@@ -158,7 +165,12 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 					if let Some(parent_hash) = op.block.parent_hash() {
 						parent_hashes.insert(*op.block.hash(), *parent_hash);
 					}
-					importing.insert(*op.block.hash(), (op.block, op.state, depth, Vec::new()));
+					importing.insert(*op.block.hash(), BlockData {
+						block: op.block,
+						state: op.state,
+						depth,
+						children: Vec::new()
+					});
 				} else {
 					next_verifying.push(op)
 				}
@@ -191,7 +203,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		for (hash, parent_hash) in parent_hashes {
 			self.blocks_and_states.get_mut(&parent_hash)
 				.expect("Parent hash are checked to exist or has been just imported; qed")
-				.3.push(hash);
+				.children.push(hash);
 		}
 
 		if let Some(new_head) = operation.set_head {
@@ -213,7 +225,12 @@ impl<C: BaseContext> MemoryBackend<C> where
 			storage: genesis_storage,
 		};
 		let mut blocks_and_states = HashMap::new();
-		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0, Vec::new()));
+		blocks_and_states.insert(*block.hash(), BlockData {
+			block,
+			state: genesis_state,
+			depth: 0,
+			children: Vec::new()
+		});
 
 		MemoryBackend {
 			blocks_and_states,
