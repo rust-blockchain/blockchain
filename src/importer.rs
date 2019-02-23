@@ -1,18 +1,18 @@
 use std::marker::PhantomData;
 use std::{mem, fmt, error as stderror};
-use crate::traits::{HashOf, BlockOf, Block, Executor, Backend, Context, AsExternalities};
+use crate::traits::{HashOf, BlockOf, Block, BlockExecutor, Backend, BaseContext, AsExternalities};
 
-pub struct ImportOperation<C: Context, B: Backend<C>> {
+pub struct ImportOperation<C: BaseContext, B: Backend<C>> {
 	pub block: BlockOf<C>,
 	pub state: B::State,
 }
 
-pub struct Operation<C: Context, B: Backend<C>> {
+pub struct Operation<C: BaseContext, B: Backend<C>> {
 	pub import_block: Vec<ImportOperation<C, B>>,
 	pub set_head: Option<HashOf<C>>,
 }
 
-impl<C: Context, B> Default for Operation<C, B> where
+impl<C: BaseContext, B> Default for Operation<C, B> where
 	B: Backend<C>
 {
 	fn default() -> Self {
@@ -23,7 +23,7 @@ impl<C: Context, B> Default for Operation<C, B> where
 	}
 }
 
-pub struct Importer<C: Context, B: Backend<C>, E> {
+pub struct Importer<C: BaseContext, B: Backend<C>, E> {
 	executor: E,
 	backend: B,
 	pending: Operation<C, B>,
@@ -63,9 +63,9 @@ impl stderror::Error for Error {
 	}
 }
 
-impl<C: Context, B, E> Importer<C, B, E> where
+impl<C: BaseContext, B, E> Importer<C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
-	E: Executor<C>,
+	E: BlockExecutor<C>,
 {
 	pub fn new(backend: B, executor: E) -> Self {
 		Self {

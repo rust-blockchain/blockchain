@@ -8,13 +8,18 @@ pub trait Block {
 	fn parent_hash(&self) -> Option<&Self::Hash>;
 }
 
-pub type ExternalitiesOf<C> = <C as Context>::Externalities;
-pub type BlockOf<C> = <C as Context>::Block;
+pub type ExternalitiesOf<C> = <C as BaseContext>::Externalities;
+pub type BlockOf<C> = <C as BaseContext>::Block;
 pub type HashOf<C> = <BlockOf<C> as Block>::Hash;
+pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
 
-pub trait Context {
+pub trait BaseContext {
 	type Block: Block;
 	type Externalities: ?Sized;
+}
+
+pub trait ExtrinsicContext: BaseContext {
+	type Extrinsic;
 }
 
 pub trait AsExternalities<E: ?Sized> {
@@ -29,7 +34,7 @@ pub trait StorageExternalities {
 	fn remove_storage(&mut self, key: &[u8]);
 }
 
-pub trait Backend<C: Context>: Sized {
+pub trait Backend<C: BaseContext>: Sized {
 	type State: AsExternalities<ExternalitiesOf<C>>;
 	type Operation;
 	type Error: stderror::Error + 'static;
@@ -45,7 +50,7 @@ pub trait Backend<C: Context>: Sized {
 	) -> Result<(), Self::Error>;
 }
 
-pub trait Executor<C: Context>: Sized {
+pub trait BlockExecutor<C: BaseContext>: Sized {
 	type Error: stderror::Error + 'static;
 
 	fn execute_block(
@@ -137,7 +142,7 @@ mod tests {
 
 	pub struct DummyContext;
 
-	impl Context for DummyContext {
+	impl BaseContext for DummyContext {
 		type Block = DummyBlock;
 		type Externalities = dyn DummyExternalities + 'static;
 	}
@@ -155,7 +160,7 @@ mod tests {
 
 	pub struct DummyExecutor;
 
-	impl Executor<DummyContext> for Arc<DummyExecutor> {
+	impl BlockExecutor<DummyContext> for Arc<DummyExecutor> {
 		type Error = DummyError;
 
 		fn execute_block(

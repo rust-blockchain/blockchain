@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use std::{fmt, error as stderror};
 
 use crate::traits::{
-	HashOf, BlockOf, ExternalitiesOf, AsExternalities, Context, Backend,
+	HashOf, BlockOf, ExternalitiesOf, AsExternalities, BaseContext, Backend,
 	NullExternalities, StorageExternalities, Block,
 };
 use crate::importer::Operation;
@@ -60,12 +60,12 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
-pub struct MemoryBackend<C: Context> {
+pub struct MemoryBackend<C: BaseContext> {
 	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState)>,
 	head: HashOf<C>,
 }
 
-impl<C: Context> MemoryBackend<C> where {
+impl<C: BaseContext> MemoryBackend<C> where {
 	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
 		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
 
@@ -83,7 +83,7 @@ impl<C: Context> MemoryBackend<C> where {
 	}
 }
 
-impl<C: Context> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
+impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
 {
 	type State = MemoryState;
@@ -179,14 +179,14 @@ mod tests {
 
 	pub struct DummyContext;
 
-	impl Context for DummyContext {
+	impl BaseContext for DummyContext {
 		type Block = DummyBlock;
 		type Externalities = dyn CombinedExternalities + 'static;
 	}
 
 	pub struct DummyExecutor;
 
-	impl Executor<DummyContext> for Arc<DummyExecutor> {
+	impl BlockExecutor<DummyContext> for Arc<DummyExecutor> {
 		type Error = Error;
 
 		fn execute_block(
