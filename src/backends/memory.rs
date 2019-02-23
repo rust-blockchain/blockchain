@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::{fmt, error as stderror};
 
@@ -61,7 +61,7 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 }
 
 pub struct MemoryBackend<C: BaseContext> {
-	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState)>,
+	blocks_and_states: HashMap<HashOf<C>, (BlockOf<C>, MemoryState, usize)>,
 	head: HashOf<C>,
 }
 
@@ -74,7 +74,7 @@ impl<C: BaseContext> MemoryBackend<C> where {
 			storage: genesis_storage,
 		};
 		let mut blocks_and_states = HashMap::new();
-		blocks_and_states.insert(*block.hash(), (block, genesis_state));
+		blocks_and_states.insert(*block.hash(), (block, genesis_state, 0));
 
 		Self {
 			blocks_and_states,
@@ -95,6 +95,16 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 		this.head
 	}
 
+	fn depth_at(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<Option<usize>, Error> {
+		let this = self.read().expect("backend lock is poisoned");
+
+		Ok(this.blocks_and_states.get(hash)
+		   .map(|(_, _, depth)| *depth))
+	}
+
 	fn block_at(
 		&self,
 		hash: &HashOf<C>,
@@ -102,7 +112,7 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 		let this = self.read().expect("backend lock is poisoned");
 
 		Ok(this.blocks_and_states.get(hash)
-		   .map(|(block, _)| block.clone()))
+		   .map(|(block, _, _)| block.clone()))
 	}
 
 	fn state_at(
@@ -112,7 +122,7 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 		let this = self.read().expect("backend lock is poisoned");
 
 		Ok(this.blocks_and_states.get(hash)
-		   .map(|(_, state)| state.clone()))
+		   .map(|(_, state, _)| state.clone()))
 	}
 
 	fn commit(
@@ -121,38 +131,60 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 	) -> Result<(), Error> {
 		let mut this = self.write().expect("backend lock is poisoned");
 
-		let importing_hashes = operation.import_block
-			.iter()
-			.map(|op| *op.block.hash())
-			.collect::<HashSet<_>>();
+		let mut importing = HashMap::new();
+		let mut verifying = operation.import_block;
 
 		// Do precheck to make sure the import operation is valid.
-		for op in &operation.import_block {
-			let parent_contains_in_backend_or_importing = op.block.parent_hash()
-				.map(|parent_hash| {
-					this.blocks_and_states.contains_key(parent_hash) ||
-						importing_hashes.contains(parent_hash)
-				})
-				.unwrap_or(true);
+		loop {
+			let mut progress = false;
+			let mut next_verifying = Vec::new();
 
-			if !parent_contains_in_backend_or_importing {
+			for op in verifying {
+				let depth = match op.block.parent_hash() {
+					Some(parent_hash) => {
+						if this.blocks_and_states.contains_key(parent_hash) {
+							this.blocks_and_states.get(parent_hash)
+								.map(|(_, _, depth)| *depth)
+						} else if importing.contains_key(parent_hash) {
+							importing.get(parent_hash)
+								.map(|(_, _, depth)| *depth)
+						} else {
+							None
+						}
+					},
+					None => Some(0),
+				};
+
+				if let Some(depth) = depth {
+					progress = true;
+					importing.insert(*op.block.hash(), (op.block, op.state, depth));
+				} else {
+					next_verifying.push(op)
+				}
+			}
+
+			if next_verifying.len() == 0 {
+				break;
+			}
+
+			if !progress {
 				return Err(Error::InvalidOperation);
 			}
+
+			verifying = next_verifying;
 		}
 
 		// Do precheck to make sure the head going to set exists.
 		if let Some(new_head) = &operation.set_head {
 			let head_exists = this.blocks_and_states.contains_key(new_head) ||
-				importing_hashes.contains(new_head);
+				importing.contains_key(new_head);
 
 			if !head_exists {
 				return Err(Error::InvalidOperation);
 			}
 		}
 
-		for op in operation.import_block {
-			this.blocks_and_states.insert(*op.block.hash(), (op.block, op.state));
-		}
+		this.blocks_and_states.extend(importing);
 
 		if let Some(new_head) = operation.set_head {
 			this.head = new_head;

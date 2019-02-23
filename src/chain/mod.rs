@@ -1,8 +1,10 @@
 mod importer;
 mod block_builder;
+mod route;
 
 pub use self::importer::Importer;
 pub use self::block_builder::BlockBuilder;
+pub use self::route::{tree_route, TreeRoute};
 
 use std::{fmt, error as stderror};
 use crate::traits::{Backend, BaseContext, BlockOf, HashOf};
