@@ -107,8 +107,15 @@ impl<C: BaseContext> MemoryBackendInner<C> where {
 	}
 }
 
-#[derive(Clone)]
 pub struct MemoryBackend<C: BaseContext>(Arc<RwLock<MemoryBackendInner<C>>>);
+
+impl<C: BaseContext> Clone for MemoryBackend<C> where
+	MemoryState: AsExternalities<ExternalitiesOf<C>>
+{
+	fn clone(&self) -> Self {
+		MemoryBackend(self.0.clone())
+	}
+}
 
 impl<C: BaseContext> MemoryBackend<C> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
