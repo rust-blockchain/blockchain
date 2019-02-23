@@ -1,7 +1,7 @@
 use std::error as stderror;
 use std::hash;
 
-pub trait Block {
+pub trait Block: Clone {
 	type Hash: Copy + Eq + hash::Hash;
 
 	fn hash(&self) -> &Self::Hash;
@@ -43,6 +43,11 @@ pub trait Backend<C: BaseContext>: Sized {
 		&self,
 		hash: &HashOf<C>,
 	) -> Result<Option<Self::State>, Self::Error>;
+
+	fn block_at(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<Option<BlockOf<C>>, Self::Error>;
 
 	fn commit(
 		&self,
@@ -91,8 +96,9 @@ mod tests {
 	use std::fmt;
 	use std::sync::{Arc, RwLock};
 
-	use crate::importer::Operation;
+	use crate::chain::Operation;
 
+	#[derive(Clone)]
 	pub struct DummyBlock {
 		hash: usize,
 		parent_hash: usize,
@@ -116,6 +122,14 @@ mod tests {
 		type State = DummyState;
 		type Error = DummyError;
 		type Operation = Operation<DummyContext, Self>;
+
+		fn block_at(
+			&self,
+			hash: &usize
+		) -> Result<Option<DummyBlock>, DummyError> {
+			let this = self.read().expect("backend lock is poisoned");
+			Ok(this.blocks.get(hash).cloned())
+		}
 
 		fn state_at(
 			&self,

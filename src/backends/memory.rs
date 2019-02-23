@@ -6,7 +6,7 @@ use crate::traits::{
 	HashOf, BlockOf, ExternalitiesOf, AsExternalities, BaseContext, Backend,
 	NullExternalities, StorageExternalities, Block,
 };
-use crate::importer::Operation;
+use crate::chain::Operation;
 
 #[derive(Debug)]
 pub enum Error {
@@ -90,6 +90,16 @@ impl<C: BaseContext> Backend<C> for Arc<RwLock<MemoryBackend<C>>> where
 	type Operation = Operation<C, Self>;
 	type Error = Error;
 
+	fn block_at(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<Option<BlockOf<C>>, Error> {
+		let this = self.read().expect("backend lock is poisoned");
+
+		Ok(this.blocks_and_states.get(hash)
+		   .map(|(block, _)| block.clone()))
+	}
+
 	fn state_at(
 		&self,
 		hash: &HashOf<C>,
@@ -153,8 +163,9 @@ mod tests {
 
 	use super::*;
 	use crate::traits::*;
-	use crate::importer::Importer;
+	use crate::chain::Importer;
 
+	#[derive(Clone)]
 	pub struct DummyBlock {
 		hash: usize,
 		parent_hash: usize,
