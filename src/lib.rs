@@ -1,5 +1,7 @@
 use std::{error as stderror};
 use std::mem;
+use std::sync::Arc;
+use std::marker::PhantomData;
 
 pub trait Block {
     type Hash;
@@ -8,27 +10,34 @@ pub trait Block {
     fn parent_hash(&self) -> Option<Self::Hash>;
 }
 
-pub type StateOf<C> = <C as Context>::State;
+pub type ExternalitiesOf<C> = <C as Context>::Externalities;
 pub type BlockOf<C> = <C as Context>::Block;
 pub type HashOf<C> = <BlockOf<C> as Block>::Hash;
 
 pub trait Context {
     type Block: Block;
-    type State;
+    type Externalities;
+}
+
+pub trait AsExternalities {
+    type Externalities;
+
+    fn as_externalities(&mut self) -> &mut Self::Externalities;
 }
 
 pub trait Backend {
     type Context: Context;
+    type State: AsExternalities<Externalities=ExternalitiesOf<Self::Context>>;
     type Error: stderror::Error + 'static;
 
     fn state_at(
         &self,
         hash: Option<HashOf<Self::Context>>
-    ) -> Result<StateOf<Self::Context>, Self::Error>;
+    ) -> Result<Self::State, Self::Error>;
 
     fn commit(
-        &mut self,
-        operation: Operation<Self::Context>
+        &self,
+        operation: Operation<Self>
     ) -> Result<(), Self::Error>;
 }
 
@@ -39,21 +48,21 @@ pub trait Executor {
     fn execute_block(
         &self,
         block: &BlockOf<Self::Context>,
-        state: &mut StateOf<Self::Context>
+        state: &mut ExternalitiesOf<Self::Context>
     ) -> Result<(), Self::Error>;
 }
 
-pub struct ImportOperation<C: Context> {
-    pub block: BlockOf<C>,
-    pub state: StateOf<C>,
+pub struct ImportOperation<B: Backend + ?Sized> {
+    pub block: BlockOf<B::Context>,
+    pub state: B::State,
 }
 
-pub struct Operation<C: Context> {
-    pub import_block: Vec<ImportOperation<C>>,
-    pub set_head: Option<HashOf<C>>,
+pub struct Operation<B: Backend + ?Sized> {
+    pub import_block: Vec<ImportOperation<B>>,
+    pub set_head: Option<HashOf<B::Context>>,
 }
 
-impl<C: Context> Default for Operation<C> {
+impl<B: Backend> Default for Operation<B> {
     fn default() -> Self {
         Self {
             import_block: Vec::new(),
@@ -62,10 +71,11 @@ impl<C: Context> Default for Operation<C> {
     }
 }
 
-pub struct Chain<C: Context, B, E> {
-    executor: E,
-    backend: B,
-    pending: Operation<C>,
+pub struct Chain<C: Context, B: Backend + ?Sized, E> {
+    executor: Arc<E>,
+    backend: Arc<B>,
+    pending: Operation<B>,
+    _marker: PhantomData<C>,
 }
 
 pub enum Error {
@@ -80,7 +90,7 @@ impl<C: Context, B, E> Chain<C, B, E> where
     pub fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Error> {
         let mut state = self.backend.state_at(block.parent_hash())
             .map_err(|e| Error::Backend(Box::new(e)))?;
-        self.executor.execute_block(&block, &mut state)
+        self.executor.execute_block(&block, state.as_externalities())
             .map_err(|e| Error::Executor(Box::new(e)))?;
 
         let operation = ImportOperation { block, state };
