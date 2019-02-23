@@ -16,21 +16,18 @@ pub trait Context {
 	type Externalities: ?Sized;
 }
 
-pub trait AsExternalities {
-	type Externalities: ?Sized;
-
-	fn as_externalities(&mut self) -> &mut Self::Externalities;
+pub trait AsExternalities<E: ?Sized> {
+	fn as_externalities(&mut self) -> &mut E;
 }
 
-pub trait Backend: Sized {
-	type Context: Context;
-	type State: AsExternalities<Externalities=ExternalitiesOf<Self::Context>>;
+pub trait Backend<C: Context>: Sized {
+	type State: AsExternalities<ExternalitiesOf<C>>;
 	type Operation;
 	type Error: stderror::Error + 'static;
 
 	fn state_at(
 		&self,
-		hash: HashOf<Self::Context>,
+		hash: HashOf<C>,
 	) -> Result<Self::State, Self::Error>;
 
 	fn commit(
@@ -39,14 +36,13 @@ pub trait Backend: Sized {
 	) -> Result<(), Self::Error>;
 }
 
-pub trait Executor: Sized {
-	type Context: Context;
+pub trait Executor<C: Context>: Sized {
 	type Error: stderror::Error + 'static;
 
 	fn execute_block(
 		&self,
-		block: &BlockOf<Self::Context>,
-		state: &mut ExternalitiesOf<Self::Context>
+		block: &BlockOf<C>,
+		state: &mut ExternalitiesOf<C>
 	) -> Result<(), Self::Error>;
 }
 
@@ -76,11 +72,10 @@ mod tests {
 
 	pub type DummyBackend = RwLock<DummyBackendInner>;
 
-	impl Backend for Arc<DummyBackend> {
-		type Context = DummyContext;
+	impl Backend<DummyContext> for Arc<DummyBackend> {
 		type State = DummyState;
 		type Error = DummyError;
-		type Operation = Operation<Self>;
+		type Operation = Operation<DummyContext, Self>;
 
 		fn state_at(
 			&self,
@@ -95,7 +90,7 @@ mod tests {
 
 		fn commit(
 			&self,
-			operation: Operation<Self>,
+			operation: Operation<DummyContext, Self>,
 		) -> Result<(), DummyError> {
 			let mut this = self.write().expect("backend lock is poisoned");
 			for block in operation.import_block {
@@ -119,9 +114,7 @@ mod tests {
 
 	impl DummyExternalities for DummyState { }
 
-	impl AsExternalities for DummyState {
-		type Externalities = dyn DummyExternalities + 'static;
-
+	impl AsExternalities<dyn DummyExternalities> for DummyState {
 		fn as_externalities(&mut self) -> &mut (dyn DummyExternalities + 'static) {
 			self
 		}
@@ -147,8 +140,7 @@ mod tests {
 
 	pub struct DummyExecutor;
 
-	impl Executor for Arc<DummyExecutor> {
-		type Context = DummyContext;
+	impl Executor<DummyContext> for Arc<DummyExecutor> {
 		type Error = DummyError;
 
 		fn execute_block(

@@ -2,17 +2,19 @@ use std::marker::PhantomData;
 use std::{mem, error as stderror};
 use crate::traits::{HashOf, BlockOf, Block, Executor, Backend, Context, AsExternalities};
 
-pub struct ImportOperation<B: Backend> {
-	pub block: BlockOf<B::Context>,
+pub struct ImportOperation<C: Context, B: Backend<C>> {
+	pub block: BlockOf<C>,
 	pub state: B::State,
 }
 
-pub struct Operation<B: Backend> {
-	pub import_block: Vec<ImportOperation<B>>,
-	pub set_head: Option<HashOf<B::Context>>,
+pub struct Operation<C: Context, B: Backend<C>> {
+	pub import_block: Vec<ImportOperation<C, B>>,
+	pub set_head: Option<HashOf<C>>,
 }
 
-impl<B: Backend> Default for Operation<B> {
+impl<C: Context, B> Default for Operation<C, B> where
+	B: Backend<C>
+{
 	fn default() -> Self {
 		Self {
 			import_block: Vec::new(),
@@ -21,10 +23,10 @@ impl<B: Backend> Default for Operation<B> {
 	}
 }
 
-pub struct Chain<C: Context, B: Backend, E> {
+pub struct Chain<C: Context, B: Backend<C>, E> {
 	executor: E,
 	backend: B,
-	pending: Operation<B>,
+	pending: Operation<C, B>,
 	_marker: PhantomData<C>,
 }
 
@@ -36,8 +38,8 @@ pub enum Error {
 }
 
 impl<C: Context, B, E> Chain<C, B, E> where
-	B: Backend<Context=C, Operation=Operation<B>>,
-	E: Executor<Context=C>,
+	B: Backend<C, Operation=Operation<C, B>>,
+	E: Executor<C>,
 {
 	pub fn new(backend: B, executor: E) -> Self {
 		Self {
