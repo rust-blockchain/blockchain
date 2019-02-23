@@ -245,8 +245,6 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
-
 	use super::*;
 	use crate::traits::*;
 	use crate::chain::Importer;
@@ -274,6 +272,7 @@ mod tests {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub struct DummyContext;
 
 	impl BaseContext for DummyContext {
@@ -283,7 +282,7 @@ mod tests {
 
 	pub struct DummyExecutor;
 
-	impl BlockExecutor<DummyContext> for Arc<DummyExecutor> {
+	impl BlockExecutor<DummyContext> for DummyExecutor {
 		type Error = Error;
 
 		fn execute_block(
@@ -304,7 +303,7 @@ mod tests {
 			},
 			Default::default()
 		);
-		let executor: Arc<DummyExecutor> = Arc::new(DummyExecutor);
+		let executor = DummyExecutor;
 		let _ = Importer::new(backend, executor);
 	}
 }
