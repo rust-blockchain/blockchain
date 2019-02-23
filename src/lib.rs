@@ -27,6 +27,7 @@ pub trait AsExternalities {
 pub trait Backend: Sized {
     type Context: Context;
     type State: AsExternalities<Externalities=ExternalitiesOf<Self::Context>>;
+    type Operation;
     type Error: stderror::Error + 'static;
 
     fn state_at(
@@ -36,7 +37,7 @@ pub trait Backend: Sized {
 
     fn commit(
         &self,
-        operation: Operation<Self>
+        operation: Self::Operation,
     ) -> Result<(), Self::Error>;
 }
 
@@ -83,7 +84,7 @@ pub enum Error {
 }
 
 impl<C: Context, B, E> Chain<C, B, E> where
-    B: Backend<Context=C>,
+    B: Backend<Context=C, Operation=Operation<B>>,
     E: Executor<Context=C>,
 {
     pub fn new(backend: B, executor: E) -> Self {
@@ -157,6 +158,7 @@ mod tests {
         type Context = DummyContext;
         type State = DummyState;
         type Error = DummyError;
+        type Operation = Operation<Self>;
 
         fn state_at(
             &self,
