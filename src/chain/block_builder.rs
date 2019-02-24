@@ -1,16 +1,16 @@
 use super::{Error, Operation, ImportOperation, SharedBackend};
 use crate::traits::{
-	BaseContext, ExtrinsicContext, Backend, BuilderExecutor,
-	BlockOf, HashOf, AsExternalities, ExtrinsicOf,
+	ExtrinsicContext, Backend, BuilderExecutor,
+	BlockOf, HashOf, AsExternalities, ExtrinsicOf, AuxiliaryContext,
 };
 
-pub struct BlockBuilder<'a, C: BaseContext, B: Backend<C>, E> {
+pub struct BlockBuilder<'a, C: AuxiliaryContext, B: Backend<C>, E> {
 	executor: &'a E,
 	pending_block: BlockOf<C>,
 	pending_state: B::State,
 }
 
-impl<'a, C: ExtrinsicContext, B, E> BlockBuilder<'a, C, B, E> where
+impl<'a, C: ExtrinsicContext + AuxiliaryContext, B, E> BlockBuilder<'a, C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BuilderExecutor<C>,
 {

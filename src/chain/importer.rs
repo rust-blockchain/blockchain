@@ -1,15 +1,15 @@
 use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use std::marker::PhantomData;
 use super::{Error, Operation, ImportOperation};
-use crate::traits::{HashOf, BlockOf, Block, BlockExecutor, Backend, BaseContext, AsExternalities};
+use crate::traits::{HashOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, AuxiliaryContext, AuxiliaryOf, AuxiliaryKeyOf, TagOf};
 
-pub struct SharedBackend<C: BaseContext, B: Backend<C>> {
+pub struct SharedBackend<C: AuxiliaryContext, B: Backend<C>> {
 	backend: Arc<RwLock<B>>,
 	import_lock: Arc<Mutex<()>>,
 	_marker: PhantomData<C>,
 }
 
-impl<C: BaseContext, B> SharedBackend<C, B> where
+impl<C: AuxiliaryContext, B> SharedBackend<C, B> where
 	B: Backend<C, Operation=Operation<C, B>>
 {
 	pub fn new(backend: B) -> Self {
@@ -36,6 +36,38 @@ impl<C: BaseContext, B> SharedBackend<C, B> where
 	) -> Result<bool, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.contains(hash)
+	}
+
+	pub fn is_canon(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<bool, B::Error> {
+		self.backend.read().expect("backend lock is poisoned")
+			.is_canon(hash)
+	}
+
+	pub fn lookup_canon_depth(
+		&self,
+		depth: usize,
+	) -> Result<Option<HashOf<C>>, B::Error> {
+		self.backend.read().expect("backend lock is poisoned")
+			.lookup_canon_depth(depth)
+	}
+
+	pub fn lookup_canon_tag(
+		&self,
+		tag: &TagOf<C>,
+	) -> Result<Option<HashOf<C>>, B::Error> {
+		self.backend.read().expect("backend lock is poisoned")
+			.lookup_canon_tag(tag)
+	}
+
+	pub fn auxiliary(
+		&self,
+		key: &AuxiliaryKeyOf<C>
+	) -> Result<Option<AuxiliaryOf<C>>, B::Error> {
+		self.backend.read().expect("backend lock is poisoned")
+			.auxiliary(key)
 	}
 
 	pub fn depth_at(
@@ -83,7 +115,7 @@ impl<C: BaseContext, B> SharedBackend<C, B> where
 	}
 }
 
-impl<C: BaseContext, B: Backend<C>> Clone for SharedBackend<C, B> {
+impl<C: AuxiliaryContext, B: Backend<C>> Clone for SharedBackend<C, B> {
 	fn clone(&self) -> Self {
 		SharedBackend {
 			backend: self.backend.clone(),
@@ -93,14 +125,14 @@ impl<C: BaseContext, B: Backend<C>> Clone for SharedBackend<C, B> {
 	}
 }
 
-pub struct Importer<'a, 'executor, C: BaseContext, B: Backend<C>, E> {
+pub struct Importer<'a, 'executor, C: AuxiliaryContext, B: Backend<C>, E> {
 	executor: &'executor E,
 	backend: &'a SharedBackend<C, B>,
 	pending: Operation<C, B>,
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, C: BaseContext, B, E> Importer<'a, 'executor, C, B, E> where
+impl<'a, 'executor, C: AuxiliaryContext, B, E> Importer<'a, 'executor, C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BlockExecutor<C>,
 {
@@ -116,19 +148,25 @@ impl<'a, 'executor, C: BaseContext, B, E> Importer<'a, 'executor, C, B, E> where
 			.map_err(|e| Error::Executor(Box::new(e)))?;
 
 		let operation = ImportOperation { block, state };
-		self.import_raw(operation)
+		self.import_raw(operation);
+
+		Ok(())
 	}
 
-	pub fn import_raw(&mut self, operation: ImportOperation<C, B>) -> Result<(), Error> {
+	pub fn import_raw(&mut self, operation: ImportOperation<C, B>) {
 		self.pending.import_block.push(operation);
-
-		Ok(())
 	}
 
-	pub fn set_head(&mut self, head: HashOf<C>) -> Result<(), Error> {
+	pub fn set_head(&mut self, head: HashOf<C>) {
 		self.pending.set_head = Some(head);
+	}
 
-		Ok(())
+	pub fn insert_auxiliary(&mut self, aux: AuxiliaryOf<C>) {
+		self.pending.insert_auxiliaries.push(aux);
+	}
+
+	pub fn remove_auxiliary(&mut self, aux_key: AuxiliaryKeyOf<C>) {
+		self.pending.remove_auxiliaries.push(aux_key);
 	}
 
 	pub fn commit(self) -> Result<(), B::Error> {

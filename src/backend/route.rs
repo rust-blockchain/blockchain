@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{BaseContext, HashOf, Backend, Block};
+use crate::traits::{BaseContext, AuxiliaryContext, HashOf, Backend, Block};
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -67,7 +67,7 @@ impl<C: BaseContext> TreeRoute<C> {
 }
 
 /// Compute a tree-route between two blocks. See tree-route docs for more details.
-pub fn tree_route<C: BaseContext, B: Backend<C>>(
+pub fn tree_route<C: AuxiliaryContext, B: Backend<C>>(
 	backend: &B,
 	from_hash: &HashOf<C>,
 	to_hash: &HashOf<C>

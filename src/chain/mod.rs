@@ -5,25 +5,29 @@ pub use self::importer::{SharedBackend, Importer};
 pub use self::block_builder::BlockBuilder;
 
 use std::{fmt, error as stderror};
-use crate::traits::{Backend, BaseContext, BlockOf, HashOf};
+use crate::traits::{Backend, AuxiliaryContext, BlockOf, HashOf, AuxiliaryKeyOf, AuxiliaryOf};
 
-pub struct ImportOperation<C: BaseContext, B: Backend<C>> {
+pub struct ImportOperation<C: AuxiliaryContext, B: Backend<C>> {
 	pub block: BlockOf<C>,
 	pub state: B::State,
 }
 
-pub struct Operation<C: BaseContext, B: Backend<C>> {
+pub struct Operation<C: AuxiliaryContext, B: Backend<C>> {
 	pub import_block: Vec<ImportOperation<C, B>>,
 	pub set_head: Option<HashOf<C>>,
+	pub insert_auxiliaries: Vec<AuxiliaryOf<C>>,
+	pub remove_auxiliaries: Vec<AuxiliaryKeyOf<C>>,
 }
 
-impl<C: BaseContext, B> Default for Operation<C, B> where
+impl<C: AuxiliaryContext, B> Default for Operation<C, B> where
 	B: Backend<C>
 {
 	fn default() -> Self {
 		Self {
 			import_block: Vec::new(),
 			set_head: None,
+			insert_auxiliaries: Vec::new(),
+			remove_auxiliaries: Vec::new(),
 		}
 	}
 }

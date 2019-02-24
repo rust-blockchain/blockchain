@@ -13,6 +13,9 @@ pub type ExternalitiesOf<C> = <C as BaseContext>::Externalities;
 pub type BlockOf<C> = <C as BaseContext>::Block;
 pub type HashOf<C> = <BlockOf<C> as Block>::Hash;
 pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
+pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Keyed>::Key;
+pub type AuxiliaryOf<C> = <C as AuxiliaryContext>::Auxiliary;
+pub type TagOf<C> = <C as AuxiliaryContext>::Tag;
 
 pub trait BaseContext {
 	type Block: Block;
@@ -21,6 +24,27 @@ pub trait BaseContext {
 
 pub trait ExtrinsicContext: BaseContext {
 	type Extrinsic;
+}
+
+pub trait AuxiliaryContext: BaseContext {
+	type Tag: Eq + hash::Hash;
+	type Auxiliary: Keyed + Clone;
+
+	fn tags(_block: &Self::Block) -> Vec<Self::Tag> {
+		Vec::new()
+	}
+}
+
+pub trait Keyed {
+	type Key: Eq + hash::Hash;
+
+	fn key(&self) -> Self::Key;
+}
+
+impl Keyed for () {
+	type Key = ();
+
+	fn key(&self) -> () { () }
 }
 
 pub trait AsExternalities<E: ?Sized> {
@@ -35,7 +59,7 @@ pub trait StorageExternalities {
 	fn remove_storage(&mut self, key: &[u8]);
 }
 
-pub trait Backend<C: BaseContext>: Sized {
+pub trait Backend<C: AuxiliaryContext>: Sized {
 	type State: AsExternalities<ExternalitiesOf<C>>;
 	type Operation;
 	type Error: stderror::Error + 'static;
@@ -57,6 +81,16 @@ pub trait Backend<C: BaseContext>: Sized {
 		&self,
 		depth: usize,
 	) -> Result<Option<HashOf<C>>, Self::Error>;
+
+	fn lookup_canon_tag(
+		&self,
+		key: &TagOf<C>,
+	) -> Result<Option<HashOf<C>>, Self::Error>;
+
+	fn auxiliary(
+		&self,
+		key: &AuxiliaryKeyOf<C>,
+	) -> Result<Option<AuxiliaryOf<C>>, Self::Error>;
 
 	fn depth_at(
 		&self,

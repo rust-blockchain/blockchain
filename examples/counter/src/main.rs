@@ -5,7 +5,7 @@ use primitive_types::H256;
 use blockchain::traits::{
 	Block as BlockT, BlockExecutor, BaseContext, ExtrinsicContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf, ExtrinsicOf,
+	BlockOf, ExtrinsicOf, AuxiliaryContext,
 };
 use blockchain::backend::MemoryBackend;
 use blockchain::chain::{BlockBuilder, SharedBackend};
@@ -61,6 +61,11 @@ pub enum Extrinsic {
 
 impl ExtrinsicContext for Context {
 	type Extrinsic = Extrinsic;
+}
+
+impl AuxiliaryContext for Context {
+	type Tag = ();
+	type Auxiliary = ();
 }
 
 #[derive(Debug)]
@@ -206,14 +211,14 @@ fn main() {
 
 		// Import the built block.
 		let mut build_importer = backend_build.begin_import(&executor);
-		build_importer.import_raw(op).unwrap();
-		build_importer.set_head(*block.hash()).unwrap();
+		build_importer.import_raw(op);
+		build_importer.set_head(*block.hash());
 		build_importer.commit().unwrap();
 
 		// Import the block again to importer.
 		let mut importer = backend_import.begin_import(&executor);
 		importer.import_block(block.clone()).unwrap();
-		importer.set_head(*block.hash()).unwrap();
+		importer.set_head(*block.hash());
 		importer.commit().unwrap();
 	}
 }
