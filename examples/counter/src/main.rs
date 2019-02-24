@@ -16,6 +16,7 @@ use codec_derive::{Encode, Decode};
 use std::thread;
 use std::time::Duration;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokio_io::{AsyncRead, AsyncWrite};
 use primitive_types::H256;
 use crate::runtime::{Block, Executor, Extrinsic, Context};
@@ -31,12 +32,15 @@ struct CounterBehaviour<TSubstream: AsyncRead + AsyncWrite> {
 	backend: SharedBackend<Context, MemoryBackend<Context>>,
 	#[behaviour(ignore)]
 	topic: Topic,
+	#[behaviour(ignore)]
+	pending_transactions: Option<Arc<Mutex<Vec<Extrinsic>>>>
 }
 
 #[derive(Debug, Encode, Decode)]
 enum Message {
 	Request(H256),
 	Block(Block),
+	Extrinsic(Extrinsic),
 }
 
 impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<libp2p::floodsub::FloodsubEvent> for CounterBehaviour<TSubstream> {
@@ -53,6 +57,11 @@ impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<libp2p::fl
 				Message::Block(block) => {
 					if let Some(sender) = &mut self.sender {
 						sender.start_send(block).unwrap();
+					}
+				},
+				Message::Extrinsic(extrinsic) => {
+					if let Some(pending_transactions) = &self.pending_transactions {
+						pending_transactions.lock().unwrap().push(extrinsic);
 					}
 				},
 			}
@@ -87,20 +96,23 @@ fn main() {
 			});
 		}
 
-		start_network(backend, Some(sender), None, Some(request_receiver), Some(to_dial));
+		start_network(backend, Some(sender), None, Some(request_receiver), None, Some(to_dial));
 	} else {
+		let pending_transactions = Arc::new(Mutex::new(Default::default()));
+
 		{
 			let backend = backend.clone();
+			let pending_transactions = pending_transactions.clone();
 			thread::spawn(|| {
-				builder_thread(backend, sender);
+				builder_thread(backend, sender, pending_transactions);
 			});
 		}
 
-		start_network(backend, None, Some(receiver), None, None);
+		start_network(backend, None, Some(receiver), None, Some(pending_transactions), None);
 	}
 }
 
-fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender: Option<UnboundedSender<Block>>, mut receiver: Option<UnboundedReceiver<Block>>, mut request_receiver: Option<UnboundedReceiver<H256>>, to_dial: Option<String>) {
+fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender: Option<UnboundedSender<Block>>, mut receiver: Option<UnboundedReceiver<Block>>, mut request_receiver: Option<UnboundedReceiver<Message>>, pending_transactions: Option<Arc<Mutex<Vec<Extrinsic>>>>, to_dial: Option<String>) {
 	// Create a random PeerId
 	let local_key = if to_dial.is_some() {
 		secio::SecioKeyPair::ed25519_raw_key(
@@ -127,6 +139,7 @@ fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender
 			topic: topic.clone(),
 			backend,
 			sender,
+			pending_transactions,
 		};
 
 		assert!(behaviour.floodsub.subscribe(topic.clone()));
@@ -182,9 +195,9 @@ fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender
 		if let Some(request_receiver) = &mut request_receiver {
 			loop {
 				match request_receiver.poll().expect("Error while polling channel") {
-					Async::Ready(Some(hash)) => {
-						println!("Requesting block {:?} via floodsub", hash);
-						swarm.floodsub.publish(&topic, Message::Request(hash).encode())
+					Async::Ready(Some(message)) => {
+						println!("Requesting {:?} via floodsub", message);
+						swarm.floodsub.publish(&topic, message.encode())
 					},
 					Async::Ready(None) => panic!("Channel closed"),
 					Async::NotReady => break,
@@ -203,7 +216,7 @@ fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender
 	}));
 }
 
-fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>, sender: UnboundedSender<Block>) {
+fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>, sender: UnboundedSender<Block>, pending_transactions: Arc<Mutex<Vec<Extrinsic>>>) {
 	loop {
 		thread::sleep(Duration::from_secs(5));
 
@@ -213,7 +226,17 @@ fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>,
 
 		// Build a block.
 		let mut builder = BlockBuilder::new(&backend_build, &executor, &head).unwrap();
-		builder.apply_extrinsic(Extrinsic::Add(5)).unwrap();
+		let pending_transactions = {
+			let mut locked = pending_transactions.lock().unwrap();
+			let ret = locked.clone();
+			locked.clear();
+			ret
+		};
+
+		for extrinsic in pending_transactions {
+			println!("Applying extrinsic {:?}", extrinsic);
+			builder.apply_extrinsic(extrinsic).unwrap();
+		}
 		let op = builder.finalize().unwrap();
 		let block = op.block.clone();
 
@@ -227,29 +250,38 @@ fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>,
 	}
 }
 
-fn importer_thread(backend_import: SharedBackend<Context, MemoryBackend<Context>>, receiver: UnboundedReceiver<Block>, request_sender: UnboundedSender<H256>) {
+fn importer_thread(backend_import: SharedBackend<Context, MemoryBackend<Context>>, receiver: UnboundedReceiver<Block>, request_sender: UnboundedSender<Message>) {
 	let mut receiver = receiver.wait();
 	let mut waiting: HashMap<H256, Block> = HashMap::new();
+	let mut count = 0;
 
 	loop {
+		request_sender.unbounded_send(Message::Extrinsic(Extrinsic::Add(count))).unwrap();
+		count += 1;
+
 		let head = backend_import.head();
 		let executor = Executor;
 		println!("Importing on top of {}", head);
 
 		{
-			let mut progress = false;
 			loop {
+				let mut imported = Vec::new();
+
 				for (_, block) in &waiting {
 					if backend_import.contains(block.parent_hash().unwrap()).unwrap() {
 						let mut importer = backend_import.begin_import(&executor);
 						importer.import_block(block.clone()).unwrap();
 						importer.set_head(*block.hash());
 						importer.commit().unwrap();
-						progress = true;
+						imported.push(*block.hash());
 					}
 				}
 
-				if !progress {
+				for hash in &imported {
+					waiting.remove(hash);
+				}
+
+				if imported.len() == 0 {
 					break
 				}
 			}
@@ -260,7 +292,7 @@ fn importer_thread(backend_import: SharedBackend<Context, MemoryBackend<Context>
 		// Import the block again to importer.
 		let mut importer = backend_import.begin_import(&executor);
 		if !backend_import.contains(block.parent_hash().unwrap()).unwrap() {
-			request_sender.unbounded_send(*block.parent_hash().unwrap()).unwrap();
+			request_sender.unbounded_send(Message::Request(*block.parent_hash().unwrap())).unwrap();
 			waiting.insert(*block.hash(), block);
 
 			continue
