@@ -48,6 +48,16 @@ pub trait Backend<C: BaseContext>: Sized {
 		hash: &HashOf<C>,
 	) -> Result<bool, Self::Error>;
 
+	fn is_canon(
+		&self,
+		hash: &HashOf<C>,
+	) -> Result<bool, Self::Error>;
+
+	fn lookup_canon_depth(
+		&self,
+		depth: usize,
+	) -> Result<Option<HashOf<C>>, Self::Error>;
+
 	fn depth_at(
 		&self,
 		hash: &HashOf<C>,

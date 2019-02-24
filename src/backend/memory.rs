@@ -6,11 +6,13 @@ use crate::traits::{
 	NullExternalities, StorageExternalities, Block,
 };
 use crate::chain::Operation;
+use super::tree_route;
 
 #[derive(Debug)]
 pub enum Error {
 	IO,
 	InvalidOperation,
+	ImportingGenesis,
 	NotExist,
 }
 
@@ -20,6 +22,7 @@ impl fmt::Display for Error {
 			Error::IO => "IO failure".fmt(f)?,
 			Error::InvalidOperation => "The operation provided is invalid".fmt(f)?,
 			Error::NotExist => "Block does not exist".fmt(f)?,
+			Error::ImportingGenesis => "Trying to import another genesis".fmt(f)?,
 		}
 
 		Ok(())
@@ -65,13 +68,15 @@ struct BlockData<C: BaseContext> {
 	block: BlockOf<C>,
 	state: MemoryState,
 	depth: usize,
-	children: Vec<HashOf<C>>
+	children: Vec<HashOf<C>>,
+	is_canon: bool,
 }
 
 pub struct MemoryBackend<C: BaseContext> {
 	blocks_and_states: HashMap<HashOf<C>, BlockData<C>>,
 	head: HashOf<C>,
 	genesis: HashOf<C>,
+	canon_depth_mappings: HashMap<usize, HashOf<C>>,
 }
 
 impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
@@ -94,6 +99,23 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		hash: &HashOf<C>
 	) -> Result<bool, Error> {
 		Ok(self.blocks_and_states.contains_key(hash))
+	}
+
+	fn is_canon(
+		&self,
+		hash: &HashOf<C>
+	) -> Result<bool, Error> {
+		self.blocks_and_states.get(hash)
+			.map(|data| data.is_canon)
+			.ok_or(Error::NotExist)
+	}
+
+	fn lookup_canon_depth(
+		&self,
+		depth: usize,
+	) -> Result<Option<HashOf<C>>, Error> {
+		Ok(self.canon_depth_mappings.get(&depth)
+		   .map(|h| h.clone()))
 	}
 
 	fn children_at(
@@ -146,7 +168,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 			let mut next_verifying = Vec::new();
 
 			for op in verifying {
-				let depth = match op.block.parent_hash() {
+				let parent_depth = match op.block.parent_hash() {
 					Some(parent_hash) => {
 						if self.contains(parent_hash)? {
 							Some(self.depth_at(parent_hash)?)
@@ -157,8 +179,9 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 							None
 						}
 					},
-					None => Some(0),
+					None => return Err(Error::ImportingGenesis),
 				};
+				let depth = parent_depth.map(|d| d + 1);
 
 				if let Some(depth) = depth {
 					progress = true;
@@ -169,7 +192,8 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 						block: op.block,
 						state: op.state,
 						depth,
-						children: Vec::new()
+						children: Vec::new(),
+						is_canon: false,
 					});
 				} else {
 					next_verifying.push(op)
@@ -189,7 +213,7 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 
 		// Do precheck to make sure the head going to set exists.
 		if let Some(new_head) = &operation.set_head {
-			let head_exists = self.blocks_and_states.contains_key(new_head) ||
+			let head_exists = self.contains(new_head)? ||
 				importing.contains_key(new_head);
 
 			if !head_exists {
@@ -207,6 +231,23 @@ impl<C: BaseContext> Backend<C> for MemoryBackend<C> where
 		}
 
 		if let Some(new_head) = operation.set_head {
+			let route = tree_route(self, &self.head, &new_head)
+				.expect("Blocks are checked to exist or importing; qed");
+
+			for hash in route.retracted() {
+				let mut block = self.blocks_and_states.get_mut(hash)
+					.expect("Block is fetched from tree_route; it must exist; qed");
+				block.is_canon = false;
+				self.canon_depth_mappings.remove(&block.depth);
+			}
+
+			for hash in route.enacted() {
+				let mut block = self.blocks_and_states.get_mut(hash)
+					.expect("Block is fetched from tree_route; it must exist; qed");
+				block.is_canon = true;
+				self.canon_depth_mappings.insert(block.depth, *hash);
+			}
+
 			self.head = new_head;
 		}
 
@@ -225,15 +266,22 @@ impl<C: BaseContext> MemoryBackend<C> where
 			storage: genesis_storage,
 		};
 		let mut blocks_and_states = HashMap::new();
-		blocks_and_states.insert(*block.hash(), BlockData {
-			block,
-			state: genesis_state,
-			depth: 0,
-			children: Vec::new()
-		});
+		blocks_and_states.insert(
+			*block.hash(),
+			BlockData {
+				block,
+				state: genesis_state,
+				depth: 0,
+				children: Vec::new(),
+				is_canon: true,
+			}
+		);
+		let mut canon_depth_mappings = HashMap::new();
+		canon_depth_mappings.insert(0, genesis_hash);
 
 		MemoryBackend {
 			blocks_and_states,
+			canon_depth_mappings,
 			genesis: genesis_hash,
 			head: genesis_hash,
 		}
