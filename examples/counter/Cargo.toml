@@ -10,3 +10,7 @@ parity-codec = "3.0"
 parity-codec-derive = "3.0"
 blockchain = { path = "../.." }
 sha3 = "0.8"
+libp2p = "0.4"
+tokio = "0.1"
+tokio-io = "0.1"
+futures = "0.1"
