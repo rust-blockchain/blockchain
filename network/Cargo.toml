@@ -1,13 +1,7 @@
 [package]
-name = "blockchain"
+name = "network"
 version = "0.1.0"
 authors = ["Wei Tang <hi@that.world>"]
 edition = "2018"
 
 [dependencies]
-
-[workspace]
-members = [
-	"examples/counter",
-	"network",
-]
