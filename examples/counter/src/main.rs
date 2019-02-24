@@ -30,7 +30,7 @@ struct CounterBehaviour<TSubstream: AsyncRead + AsyncWrite> {
 	#[behaviour(ignore)]
 	backend: SharedBackend<Context, MemoryBackend<Context>>,
 	#[behaviour(ignore)]
-	new_block_topic: Topic,
+	topic: Topic,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -48,7 +48,7 @@ impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<libp2p::fl
 			match message {
 				Message::Request(hash) => {
 					let block = self.backend.block_at(&hash).unwrap();
-					self.floodsub.publish(&self.new_block_topic, Message::Block(block).encode());
+					self.floodsub.publish(&self.topic, Message::Block(block).encode());
 				},
 				Message::Block(block) => {
 					if let Some(sender) = &mut self.sender {
@@ -117,19 +117,19 @@ fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender
 	println!("Local peer id: {:?}", local_peer_id);
 
 	let transport = libp2p::build_tcp_ws_secio_mplex_yamux(local_key);
-	let new_block_topic = TopicBuilder::new("chat").build();
+	let topic = TopicBuilder::new("blocks").build();
 
 	let mut swarm = {
 		let mut behaviour = CounterBehaviour {
 			floodsub: Floodsub::new(local_peer_id.clone()),
 			kademlia: Kademlia::new(local_peer_id.clone()),
 
-			new_block_topic: new_block_topic.clone(),
+			topic: topic.clone(),
 			backend,
 			sender,
 		};
 
-		assert!(behaviour.floodsub.subscribe(new_block_topic.clone()));
+		assert!(behaviour.floodsub.subscribe(topic.clone()));
 		libp2p::Swarm::new(transport, behaviour, local_peer_id)
 	};
 
@@ -171,7 +171,7 @@ fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender
 				match receiver.poll().expect("Error while polling channel") {
 					Async::Ready(Some(block)) => {
 						println!("Broadcasting block {:?} via floodsub", block);
-						swarm.floodsub.publish(&new_block_topic, Message::Block(block).encode())
+						swarm.floodsub.publish(&topic, Message::Block(block).encode())
 					},
 					Async::Ready(None) => panic!("Channel closed"),
 					Async::NotReady => break,
@@ -184,7 +184,7 @@ fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender
 				match request_receiver.poll().expect("Error while polling channel") {
 					Async::Ready(Some(hash)) => {
 						println!("Requesting block {:?} via floodsub", hash);
-						swarm.floodsub.publish(&new_block_topic, Message::Request(hash).encode())
+						swarm.floodsub.publish(&topic, Message::Request(hash).encode())
 					},
 					Async::Ready(None) => panic!("Channel closed"),
 					Async::NotReady => break,
