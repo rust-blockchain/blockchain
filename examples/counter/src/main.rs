@@ -7,15 +7,18 @@ use blockchain::backend::MemoryBackend;
 use blockchain::chain::{SharedBackend, BlockBuilder};
 use blockchain::traits::Block as BlockT;
 use libp2p::{secio, NetworkBehaviour};
-use libp2p::floodsub::{Floodsub, TopicBuilder};
+use libp2p::floodsub::{Floodsub, Topic, TopicBuilder};
 use libp2p::kad::Kademlia;
 use libp2p::core::swarm::NetworkBehaviourEventProcess;
 use futures::{Async, sink::Sink, stream::Stream, sync::mpsc::{UnboundedSender, UnboundedReceiver, unbounded}};
 use codec::{Encode, Decode};
+use codec_derive::{Encode, Decode};
 use std::thread;
 use std::time::Duration;
+use std::collections::HashMap;
 use tokio_io::{AsyncRead, AsyncWrite};
-use crate::runtime::{Block, Executor, Extrinsic};
+use primitive_types::H256;
+use crate::runtime::{Block, Executor, Extrinsic, Context};
 
 #[derive(NetworkBehaviour)]
 struct CounterBehaviour<TSubstream: AsyncRead + AsyncWrite> {
@@ -24,16 +27,34 @@ struct CounterBehaviour<TSubstream: AsyncRead + AsyncWrite> {
 
 	#[behaviour(ignore)]
 	sender: Option<UnboundedSender<Block>>,
+	#[behaviour(ignore)]
+	backend: SharedBackend<Context, MemoryBackend<Context>>,
+	#[behaviour(ignore)]
+	new_block_topic: Topic,
+}
+
+#[derive(Debug, Encode, Decode)]
+enum Message {
+	Request(H256),
+	Block(Block),
 }
 
 impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<libp2p::floodsub::FloodsubEvent> for CounterBehaviour<TSubstream> {
-	fn inject_event(&mut self, message: libp2p::floodsub::FloodsubEvent) {
-		if let libp2p::floodsub::FloodsubEvent::Message(message) = message {
-			let block = Block::decode(&mut &message.data[..]).unwrap();
-			println!("Received: {:?} from {:?}", block, message.source);
+	fn inject_event(&mut self, floodsub_message: libp2p::floodsub::FloodsubEvent) {
+		if let libp2p::floodsub::FloodsubEvent::Message(floodsub_message) = floodsub_message {
+			let message = Message::decode(&mut &floodsub_message.data[..]).unwrap();
+			println!("Received: {:?} from {:?}", message, floodsub_message.source);
 
-			if let Some(sender) = &mut self.sender {
-				sender.start_send(block).unwrap();
+			match message {
+				Message::Request(hash) => {
+					let block = self.backend.block_at(&hash).unwrap();
+					self.floodsub.publish(&self.new_block_topic, Message::Block(block).encode());
+				},
+				Message::Block(block) => {
+					if let Some(sender) = &mut self.sender {
+						sender.start_send(block).unwrap();
+					}
+				},
 			}
 		}
 	}
@@ -51,22 +72,35 @@ impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<libp2p::ka
 fn main() {
 	let (sender, receiver) = unbounded();
 
+	let genesis_block = Block::genesis();
+	let backend = SharedBackend::new(
+		MemoryBackend::with_genesis(genesis_block.clone(), Default::default())
+	);
+
 	if let Some(to_dial) = std::env::args().nth(1) {
-		thread::spawn(move || {
-			importer_thread(receiver);
-		});
+		let (request_sender, request_receiver) = unbounded();
 
-		start_network(Some(sender), None, Some(to_dial));
+		{
+			let backend = backend.clone();
+			thread::spawn(move || {
+				importer_thread(backend, receiver, request_sender);
+			});
+		}
+
+		start_network(backend, Some(sender), None, Some(request_receiver), Some(to_dial));
 	} else {
-		thread::spawn(move || {
-			builder_thread(sender);
-		});
+		{
+			let backend = backend.clone();
+			thread::spawn(|| {
+				builder_thread(backend, sender);
+			});
+		}
 
-		start_network(None, Some(receiver), None);
+		start_network(backend, None, Some(receiver), None, None);
 	}
 }
 
-fn start_network(sender: Option<UnboundedSender<Block>>, mut receiver: Option<UnboundedReceiver<Block>>, to_dial: Option<String>) {
+fn start_network(backend: SharedBackend<Context, MemoryBackend<Context>>, sender: Option<UnboundedSender<Block>>, mut receiver: Option<UnboundedReceiver<Block>>, mut request_receiver: Option<UnboundedReceiver<H256>>, to_dial: Option<String>) {
 	// Create a random PeerId
 	let local_key = if to_dial.is_some() {
 		secio::SecioKeyPair::ed25519_raw_key(
@@ -90,6 +124,8 @@ fn start_network(sender: Option<UnboundedSender<Block>>, mut receiver: Option<Un
 			floodsub: Floodsub::new(local_peer_id.clone()),
 			kademlia: Kademlia::new(local_peer_id.clone()),
 
+			new_block_topic: new_block_topic.clone(),
+			backend,
 			sender,
 		};
 
@@ -109,6 +145,9 @@ fn start_network(sender: Option<UnboundedSender<Block>>, mut receiver: Option<Un
 				match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
 					Ok(_) => {
 						println!("Dialed {:?}", dialing);
+						swarm.floodsub.add_node_to_partial_view(
+							"QmSVnNf9HwVMT1Y4cK1P6aoJcEZjmoTXpjKBmAABLMnZEk".parse().unwrap()
+						);
 						swarm.kademlia.add_connected_address(
 							&"QmSVnNf9HwVMT1Y4cK1P6aoJcEZjmoTXpjKBmAABLMnZEk".parse().unwrap(),
 							dialing.parse().unwrap(),
@@ -119,6 +158,10 @@ fn start_network(sender: Option<UnboundedSender<Block>>, mut receiver: Option<Un
 			},
 			Err(err) => println!("Failed to parse address to dial: {:?}", err),
 		}
+	} else {
+		swarm.floodsub.add_node_to_partial_view(
+			"QmRpheLN4JWdAnY7HGJfWFNbfkQCb6tFf4vvA6hgjMZKrR".parse().unwrap()
+		);
 	}
 
 	// Kick it off
@@ -128,7 +171,20 @@ fn start_network(sender: Option<UnboundedSender<Block>>, mut receiver: Option<Un
 				match receiver.poll().expect("Error while polling channel") {
 					Async::Ready(Some(block)) => {
 						println!("Broadcasting block {:?} via floodsub", block);
-						swarm.floodsub.publish(&new_block_topic, block.encode())
+						swarm.floodsub.publish(&new_block_topic, Message::Block(block).encode())
+					},
+					Async::Ready(None) => panic!("Channel closed"),
+					Async::NotReady => break,
+				};
+			}
+		}
+
+		if let Some(request_receiver) = &mut request_receiver {
+			loop {
+				match request_receiver.poll().expect("Error while polling channel") {
+					Async::Ready(Some(hash)) => {
+						println!("Requesting block {:?} via floodsub", hash);
+						swarm.floodsub.publish(&new_block_topic, Message::Request(hash).encode())
 					},
 					Async::Ready(None) => panic!("Channel closed"),
 					Async::NotReady => break,
@@ -147,12 +203,7 @@ fn start_network(sender: Option<UnboundedSender<Block>>, mut receiver: Option<Un
 	}));
 }
 
-fn builder_thread(sender: UnboundedSender<Block>) {
-	let genesis_block = Block::genesis();
-	let backend_build = SharedBackend::new(
-		MemoryBackend::with_genesis(genesis_block.clone(), Default::default())
-	);
-
+fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>, sender: UnboundedSender<Block>) {
 	loop {
 		thread::sleep(Duration::from_secs(5));
 
@@ -176,22 +227,44 @@ fn builder_thread(sender: UnboundedSender<Block>) {
 	}
 }
 
-fn importer_thread(receiver: UnboundedReceiver<Block>) {
-	let genesis_block = Block::genesis();
-	let backend_import = SharedBackend::new(
-		MemoryBackend::with_genesis(genesis_block.clone(), Default::default())
-	);
+fn importer_thread(backend_import: SharedBackend<Context, MemoryBackend<Context>>, receiver: UnboundedReceiver<Block>, request_sender: UnboundedSender<H256>) {
 	let mut receiver = receiver.wait();
+	let mut waiting: HashMap<H256, Block> = HashMap::new();
 
 	loop {
 		let head = backend_import.head();
 		let executor = Executor;
 		println!("Importing on top of {}", head);
 
+		{
+			let mut progress = false;
+			loop {
+				for (_, block) in &waiting {
+					if backend_import.contains(block.parent_hash().unwrap()).unwrap() {
+						let mut importer = backend_import.begin_import(&executor);
+						importer.import_block(block.clone()).unwrap();
+						importer.set_head(*block.hash());
+						importer.commit().unwrap();
+						progress = true;
+					}
+				}
+
+				if !progress {
+					break
+				}
+			}
+		}
+
 		let block = receiver.next().unwrap().unwrap();
 
 		// Import the block again to importer.
 		let mut importer = backend_import.begin_import(&executor);
+		if !backend_import.contains(block.parent_hash().unwrap()).unwrap() {
+			request_sender.unbounded_send(*block.parent_hash().unwrap()).unwrap();
+			waiting.insert(*block.hash(), block);
+
+			continue
+		}
 		importer.import_block(block.clone()).unwrap();
 		importer.set_head(*block.hash());
 		importer.commit().unwrap();
