@@ -1,5 +1,8 @@
 # Rust Blockchain
 
+[![crates.io](https://img.shields.io/crates/v/blockchain.svg)](https://crates.io/crates/blockchain)
+[![Documentation](https://docs.rs/blockchain/badge.svg)](https://docs.rs/blockchain)
+
 *Rust Blockchain* is an unopinioned blockchain framework that helps
 you to develop a blockchain project.
 
