@@ -1,9 +1,8 @@
 use std::error as stderror;
-use std::fmt;
 use std::hash;
 
 pub trait Block: Clone {
-	type Hash: Copy + Eq + fmt::Debug + hash::Hash;
+	type Hash: Copy + Eq + hash::Hash;
 
 	fn hash(&self) -> Self::Hash;
 	fn parent_hash(&self) -> Option<Self::Hash>;
@@ -27,7 +26,7 @@ pub trait ExtrinsicContext: BaseContext {
 }
 
 pub trait AuxiliaryContext: BaseContext {
-	type Tag: Eq + hash::Hash;
+	type Tag: Copy + Eq + hash::Hash;
 	type Auxiliary: Keyed + Clone;
 
 	fn tags(_block: &Self::Block) -> Vec<Self::Tag> {
