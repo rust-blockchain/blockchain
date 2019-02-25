@@ -188,10 +188,10 @@ impl<C: AuxiliaryContext> Backend<C> for MemoryBackend<C> where
 			for op in verifying {
 				let parent_depth = match op.block.parent_hash() {
 					Some(parent_hash) => {
-						if self.contains(parent_hash)? {
-							Some(self.depth_at(parent_hash)?)
-						} else if importing.contains_key(parent_hash) {
-							importing.get(parent_hash)
+						if self.contains(&parent_hash)? {
+							Some(self.depth_at(&parent_hash)?)
+						} else if importing.contains_key(&parent_hash) {
+							importing.get(&parent_hash)
 								.map(|data| data.depth)
 						} else {
 							None
@@ -204,9 +204,9 @@ impl<C: AuxiliaryContext> Backend<C> for MemoryBackend<C> where
 				if let Some(depth) = depth {
 					progress = true;
 					if let Some(parent_hash) = op.block.parent_hash() {
-						parent_hashes.insert(*op.block.hash(), *parent_hash);
+						parent_hashes.insert(op.block.hash(), parent_hash);
 					}
-					importing.insert(*op.block.hash(), BlockData {
+					importing.insert(op.block.hash(), BlockData {
 						block: op.block,
 						state: op.state,
 						depth,
@@ -295,14 +295,14 @@ impl<C: AuxiliaryContext> MemoryBackend<C> where
 	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
 		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
 
-		let genesis_hash = *block.hash();
+		let genesis_hash = block.hash();
 		let genesis_state = MemoryState {
 			storage: genesis_storage,
 		};
 		let genesis_tags = C::tags(&block);
 		let mut blocks_and_states = HashMap::new();
 		blocks_and_states.insert(
-			*block.hash(),
+			block.hash(),
 			BlockData {
 				block,
 				state: genesis_state,
@@ -344,8 +344,8 @@ mod tests {
 	impl Block for DummyBlock {
 		type Hash = usize;
 
-		fn hash(&self) -> &usize { &self.hash }
-		fn parent_hash(&self) -> Option<&usize> { if self.parent_hash == 0 { None } else { Some(&self.parent_hash) } }
+		fn hash(&self) -> usize { self.hash }
+		fn parent_hash(&self) -> Option<usize> { if self.parent_hash == 0 { None } else { Some(self.parent_hash) } }
 	}
 
 	pub trait CombinedExternalities: NullExternalities + StorageExternalities { }
@@ -364,6 +364,11 @@ mod tests {
 	impl BaseContext for DummyContext {
 		type Block = DummyBlock;
 		type Externalities = dyn CombinedExternalities + 'static;
+	}
+
+	impl AuxiliaryContext for DummyContext {
+		type Tag = ();
+		type Auxiliary = ();
 	}
 
 	pub struct DummyExecutor;

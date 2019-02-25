@@ -5,8 +5,8 @@ use std::hash;
 pub trait Block: Clone {
 	type Hash: Copy + Eq + fmt::Debug + hash::Hash;
 
-	fn hash(&self) -> &Self::Hash;
-	fn parent_hash(&self) -> Option<&Self::Hash>;
+	fn hash(&self) -> Self::Hash;
+	fn parent_hash(&self) -> Option<Self::Hash>;
 }
 
 pub type ExternalitiesOf<C> = <C as BaseContext>::Externalities;

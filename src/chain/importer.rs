@@ -142,7 +142,7 @@ impl<'a, 'executor, C: AuxiliaryContext, B, E> Importer<'a, 'executor, C, B, E> 
 
 	pub fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Error> {
 		let mut state = self.backend
-			.state_at(block.parent_hash().ok_or(Error::IsGenesis)?)
+			.state_at(&block.parent_hash().ok_or(Error::IsGenesis)?)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 		self.executor.execute_block(&block, state.as_externalities())
 			.map_err(|e| Error::Executor(Box::new(e)))?;

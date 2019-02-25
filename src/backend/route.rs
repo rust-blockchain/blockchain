@@ -84,28 +84,28 @@ pub fn tree_route<C: AuxiliaryContext, B: Backend<C>>(
 
 		while to_depth > from_depth {
 			let to_parent_hash = match to.parent_hash() {
-				Some(parent_hash) => *parent_hash,
+				Some(parent_hash) => parent_hash,
 				None => {
 					assert!(to_depth == 0, "When parent_hash is None, depth should be 0");
 					break;
 				}
 			};
 
-			to_branch.push(*to.hash());
+			to_branch.push(to.hash());
 			to = backend.block_at(&to_parent_hash)?;
 			to_depth = backend.depth_at(&to_parent_hash)?;
 		}
 
 		while from_depth > to_depth {
 			let from_parent_hash = match from.parent_hash() {
-				Some(parent_hash) => *parent_hash,
+				Some(parent_hash) => parent_hash,
 				None => {
 					assert!(to_depth == 0, "When parent_hash is None, depth should be 0");
 					break;
 				}
 			};
 
-			from_branch.push(*from.hash());
+			from_branch.push(from.hash());
 			from = backend.block_at(&from_parent_hash)?;
 			from_depth = backend.depth_at(&from_parent_hash)?;
 		}
@@ -113,29 +113,29 @@ pub fn tree_route<C: AuxiliaryContext, B: Backend<C>>(
 
 	while from.hash() != to.hash() {
 		let to_parent_hash = match to.parent_hash() {
-			Some(parent_hash) => *parent_hash,
+			Some(parent_hash) => parent_hash,
 			None => {
 				panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
 			}
 		};
 
 		let from_parent_hash = match from.parent_hash() {
-			Some(parent_hash) => *parent_hash,
+			Some(parent_hash) => parent_hash,
 			None => {
 				panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
 			}
 		};
 
-		to_branch.push(*to.hash());
+		to_branch.push(to.hash());
 		to = backend.block_at(&to_parent_hash)?;
 
-		from_branch.push(*from.hash());
+		from_branch.push(from.hash());
 		from = backend.block_at(&from_parent_hash)?;
 	}
 
 	// add the pivot block. and append the reversed to-branch (note that it's reverse order originalls)
 	let pivot = from_branch.len();
-	from_branch.push(*to.hash());
+	from_branch.push(to.hash());
 	from_branch.extend(to_branch.into_iter().rev());
 
 	Ok(TreeRoute {

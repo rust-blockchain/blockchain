@@ -43,12 +43,12 @@ impl Block {
 impl BlockT for Block {
 	type Hash = H256;
 
-	fn parent_hash(&self) -> Option<&H256> {
-		self.parent_hash.as_ref()
+	fn parent_hash(&self) -> Option<H256> {
+		self.parent_hash
 	}
 
-	fn hash(&self) -> &H256 {
-		&self.hash
+	fn hash(&self) -> H256 {
+		self.hash
 	}
 }
 
