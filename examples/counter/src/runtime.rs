@@ -1,8 +1,8 @@
 use primitive_types::H256;
 use blockchain::traits::{
-	Block as BlockT, BlockExecutor, BaseContext, ExtrinsicContext,
+	Block as BlockT, BlockExecutor, BlockContext, ExtrinsicContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf, ExtrinsicOf, AuxiliaryContext,
+	BlockOf, ExtrinsicOf, Taggable,
 };
 use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
@@ -52,11 +52,16 @@ impl BlockT for Block {
 	}
 }
 
+impl Taggable for Block {
+	type Tag = ();
+}
+
 pub struct Context;
 
-impl BaseContext for Context {
+impl BlockContext for Context {
 	type Block = Block;
 	type Externalities = dyn StorageExternalities + 'static;
+	type Auxiliary = ();
 }
 
 #[derive(Clone, Debug, Encode, Decode)]
@@ -66,11 +71,6 @@ pub enum Extrinsic {
 
 impl ExtrinsicContext for Context {
 	type Extrinsic = Extrinsic;
-}
-
-impl AuxiliaryContext for Context {
-	type Tag = ();
-	type Auxiliary = ();
 }
 
 #[derive(Debug)]
