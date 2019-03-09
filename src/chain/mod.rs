@@ -1,3 +1,5 @@
+//! Chain importer and block builder.
+
 mod importer;
 mod block_builder;
 
@@ -5,36 +7,13 @@ pub use self::importer::{SharedBackend, Importer};
 pub use self::block_builder::BlockBuilder;
 
 use std::{fmt, error as stderror};
-use crate::traits::{Backend, AuxiliaryContext, BlockOf, HashOf, AuxiliaryKeyOf, AuxiliaryOf};
 
-pub struct ImportOperation<C: AuxiliaryContext, B: Backend<C>> {
-	pub block: BlockOf<C>,
-	pub state: B::State,
-}
-
-pub struct Operation<C: AuxiliaryContext, B: Backend<C>> {
-	pub import_block: Vec<ImportOperation<C, B>>,
-	pub set_head: Option<HashOf<C>>,
-	pub insert_auxiliaries: Vec<AuxiliaryOf<C>>,
-	pub remove_auxiliaries: Vec<AuxiliaryKeyOf<C>>,
-}
-
-impl<C: AuxiliaryContext, B> Default for Operation<C, B> where
-	B: Backend<C>
-{
-	fn default() -> Self {
-		Self {
-			import_block: Vec::new(),
-			set_head: None,
-			insert_auxiliaries: Vec::new(),
-			remove_auxiliaries: Vec::new(),
-		}
-	}
-}
-
+/// Error type for chain.
 #[derive(Debug)]
 pub enum Error {
+	/// Backend error.
 	Backend(Box<stderror::Error>),
+	/// Executor error.
 	Executor(Box<stderror::Error>),
 	/// Block is genesis block and cannot be imported.
 	IsGenesis,

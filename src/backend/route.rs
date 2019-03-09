@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{BaseContext, AuxiliaryContext, HashOf, Backend, Block};
+use crate::traits::{BlockContext, HashOf, Backend, Block};
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -41,12 +41,12 @@ use crate::traits::{BaseContext, AuxiliaryContext, HashOf, Backend, Block};
 /// Tree route from C to E2. Retracted empty. Common is C, enacted [E1, E2]
 /// C -> E1 -> E2
 /// ```
-pub struct TreeRoute<C: BaseContext> {
+pub struct TreeRoute<C: BlockContext> {
 	route: Vec<HashOf<C>>,
 	pivot: usize,
 }
 
-impl<C: BaseContext> TreeRoute<C> {
+impl<C: BlockContext> TreeRoute<C> {
 	/// Get a slice of all retracted blocks in reverse order (towards common ancestor)
 	pub fn retracted(&self) -> &[HashOf<C>] {
 		&self.route[..self.pivot]
@@ -67,7 +67,7 @@ impl<C: BaseContext> TreeRoute<C> {
 }
 
 /// Compute a tree-route between two blocks. See tree-route docs for more details.
-pub fn tree_route<C: AuxiliaryContext, B: Backend<C>>(
+pub fn tree_route<C: BlockContext, B: Backend<C>>(
 	backend: &B,
 	from_hash: &HashOf<C>,
 	to_hash: &HashOf<C>

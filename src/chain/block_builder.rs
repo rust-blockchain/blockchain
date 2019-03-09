@@ -1,19 +1,22 @@
-use super::{Error, Operation, ImportOperation, SharedBackend};
+use super::{Error, SharedBackend};
+use crate::backend::{Operation, ImportOperation};
 use crate::traits::{
 	ExtrinsicContext, Backend, BuilderExecutor,
-	BlockOf, HashOf, AsExternalities, ExtrinsicOf, AuxiliaryContext,
+	BlockOf, HashOf, AsExternalities, ExtrinsicOf,
 };
 
-pub struct BlockBuilder<'a, C: AuxiliaryContext, B: Backend<C>, E> {
+/// Block builder.
+pub struct BlockBuilder<'a, C: ExtrinsicContext, B: Backend<C>, E> {
 	executor: &'a E,
 	pending_block: BlockOf<C>,
 	pending_state: B::State,
 }
 
-impl<'a, C: ExtrinsicContext + AuxiliaryContext, B, E> BlockBuilder<'a, C, B, E> where
+impl<'a, C: ExtrinsicContext, B, E> BlockBuilder<'a, C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BuilderExecutor<C>,
 {
+	/// Create a new block builder.
 	pub fn new(backend: &SharedBackend<C, B>, executor: &'a E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
@@ -29,6 +32,7 @@ impl<'a, C: ExtrinsicContext + AuxiliaryContext, B, E> BlockBuilder<'a, C, B, E>
 		})
 	}
 
+	/// Apply extrinsic to the block builder.
 	pub fn apply_extrinsic(&mut self, extrinsic: ExtrinsicOf<C>) -> Result<(), Error> {
 		self.executor.apply_extrinsic(
 			&mut self.pending_block,
@@ -37,6 +41,7 @@ impl<'a, C: ExtrinsicContext + AuxiliaryContext, B, E> BlockBuilder<'a, C, B, E>
 		).map_err(|e| Error::Executor(Box::new(e)))
 	}
 
+	/// Finalize the block.
 	pub fn finalize(mut self) -> Result<ImportOperation<C, B>, Error> {
 		self.executor.finalize_block(
 			&mut self.pending_block,

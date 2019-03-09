@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::{fmt, error as stderror};
 
 use crate::traits::{
-	HashOf, BlockOf, ExternalitiesOf, AsExternalities, BaseContext, Backend,
-	NullExternalities, StorageExternalities, Block, TagOf, AuxiliaryContext,
-	AuxiliaryKeyOf, AuxiliaryOf, Keyed,
+	HashOf, BlockOf, ExternalitiesOf, AsExternalities, BlockContext, Backend,
+	NullExternalities, StorageExternalities, Block, TagOf,
+	AuxiliaryKeyOf, AuxiliaryOf, Keyed, Taggable
 };
-use crate::chain::Operation;
-use super::tree_route;
+use super::{Operation, tree_route};
 
 #[derive(Debug)]
 pub enum Error {
@@ -32,6 +31,7 @@ impl fmt::Display for Error {
 
 impl stderror::Error for Error { }
 
+/// State stored in memory.
 #[derive(Clone)]
 pub struct MemoryState {
 	storage: HashMap<Vec<u8>, Vec<u8>>,
@@ -65,7 +65,7 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
-struct BlockData<C: BaseContext> {
+struct BlockData<C: BlockContext> {
 	block: BlockOf<C>,
 	state: MemoryState,
 	depth: usize,
@@ -73,7 +73,8 @@ struct BlockData<C: BaseContext> {
 	is_canon: bool,
 }
 
-pub struct MemoryBackend<C: AuxiliaryContext> {
+/// Memory backend.
+pub struct MemoryBackend<C: BlockContext> {
 	blocks_and_states: HashMap<HashOf<C>, BlockData<C>>,
 	head: HashOf<C>,
 	genesis: HashOf<C>,
@@ -82,7 +83,7 @@ pub struct MemoryBackend<C: AuxiliaryContext> {
 	auxiliaries: HashMap<AuxiliaryKeyOf<C>, AuxiliaryOf<C>>,
 }
 
-impl<C: AuxiliaryContext> Backend<C> for MemoryBackend<C> where
+impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
 {
 	type State = MemoryState;
@@ -255,7 +256,7 @@ impl<C: AuxiliaryContext> Backend<C> for MemoryBackend<C> where
 			for hash in route.retracted() {
 				let mut block = self.blocks_and_states.get_mut(hash)
 					.expect("Block is fetched from tree_route; it must exist; qed");
-				let tags = C::tags(&block.block);
+				let tags = block.block.tags();
 				block.is_canon = false;
 				self.canon_depth_mappings.remove(&block.depth);
 				for tag in tags {
@@ -266,7 +267,7 @@ impl<C: AuxiliaryContext> Backend<C> for MemoryBackend<C> where
 			for hash in route.enacted() {
 				let mut block = self.blocks_and_states.get_mut(hash)
 					.expect("Block is fetched from tree_route; it must exist; qed");
-				let tags = C::tags(&block.block);
+				let tags = block.block.tags();
 				block.is_canon = true;
 				self.canon_depth_mappings.insert(block.depth, *hash);
 				for tag in tags {
@@ -289,9 +290,10 @@ impl<C: AuxiliaryContext> Backend<C> for MemoryBackend<C> where
 	}
 }
 
-impl<C: AuxiliaryContext> MemoryBackend<C> where
+impl<C: BlockContext> MemoryBackend<C> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
 {
+	/// Create a new memory backend from a genesis block.
 	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
 		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
 
@@ -299,7 +301,7 @@ impl<C: AuxiliaryContext> MemoryBackend<C> where
 		let genesis_state = MemoryState {
 			storage: genesis_storage,
 		};
-		let genesis_tags = C::tags(&block);
+		let genesis_tags = block.tags();
 		let mut blocks_and_states = HashMap::new();
 		blocks_and_states.insert(
 			block.hash(),
@@ -348,6 +350,10 @@ mod tests {
 		fn parent_hash(&self) -> Option<usize> { if self.parent_hash == 0 { None } else { Some(self.parent_hash) } }
 	}
 
+	impl Taggable for DummyBlock {
+		type Tag = ();
+	}
+
 	pub trait CombinedExternalities: NullExternalities + StorageExternalities { }
 
 	impl<T: NullExternalities + StorageExternalities> CombinedExternalities for T { }
@@ -361,13 +367,9 @@ mod tests {
 	#[allow(dead_code)]
 	pub struct DummyContext;
 
-	impl BaseContext for DummyContext {
+	impl BlockContext for DummyContext {
 		type Block = DummyBlock;
 		type Externalities = dyn CombinedExternalities + 'static;
-	}
-
-	impl AuxiliaryContext for DummyContext {
-		type Tag = ();
 		type Auxiliary = ();
 	}
 
