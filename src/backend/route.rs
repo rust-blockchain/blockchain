@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{BlockContext, HashOf, Backend, Block};
+use crate::traits::{BlockContext, IdentifierOf, Backend, Block};
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -42,26 +42,26 @@ use crate::traits::{BlockContext, HashOf, Backend, Block};
 /// C -> E1 -> E2
 /// ```
 pub struct TreeRoute<C: BlockContext> {
-	route: Vec<HashOf<C>>,
+	route: Vec<IdentifierOf<C>>,
 	pivot: usize,
 }
 
 impl<C: BlockContext> TreeRoute<C> {
 	/// Get a slice of all retracted blocks in reverse order (towards common ancestor)
-	pub fn retracted(&self) -> &[HashOf<C>] {
+	pub fn retracted(&self) -> &[IdentifierOf<C>] {
 		&self.route[..self.pivot]
 	}
 
 	/// Get the common ancestor block. This might be one of the two blocks of the
 	/// route.
-	pub fn common_block(&self) -> &HashOf<C> {
+	pub fn common_block(&self) -> &IdentifierOf<C> {
 		self.route.get(self.pivot).expect("tree-routes are computed between blocks; \
 			which are included in the route; \
 			thus it is never empty; qed")
 	}
 
 	/// Get a slice of enacted blocks (descendents of the common ancestor)
-	pub fn enacted(&self) -> &[HashOf<C>] {
+	pub fn enacted(&self) -> &[IdentifierOf<C>] {
 		&self.route[self.pivot + 1 ..]
 	}
 }
@@ -69,73 +69,73 @@ impl<C: BlockContext> TreeRoute<C> {
 /// Compute a tree-route between two blocks. See tree-route docs for more details.
 pub fn tree_route<C: BlockContext, B: Backend<C>>(
 	backend: &B,
-	from_hash: &HashOf<C>,
-	to_hash: &HashOf<C>
+	from_id: &IdentifierOf<C>,
+	to_id: &IdentifierOf<C>
 ) -> Result<TreeRoute<C>, B::Error> {
-	let mut from = backend.block_at(from_hash)?;
-	let mut to = backend.block_at(to_hash)?;
+	let mut from = backend.block_at(from_id)?;
+	let mut to = backend.block_at(to_id)?;
 
 	let mut from_branch = Vec::new();
 	let mut to_branch = Vec::new();
 
 	{
-		let mut from_depth = backend.depth_at(from_hash)?;
-		let mut to_depth = backend.depth_at(to_hash)?;
+		let mut from_depth = backend.depth_at(from_id)?;
+		let mut to_depth = backend.depth_at(to_id)?;
 
 		while to_depth > from_depth {
-			let to_parent_hash = match to.parent_hash() {
-				Some(parent_hash) => parent_hash,
+			let to_parent_id = match to.parent_id() {
+				Some(parent_id) => parent_id,
 				None => {
-					assert!(to_depth == 0, "When parent_hash is None, depth should be 0");
+					assert!(to_depth == 0, "When parent_id is None, depth should be 0");
 					break;
 				}
 			};
 
-			to_branch.push(to.hash());
-			to = backend.block_at(&to_parent_hash)?;
-			to_depth = backend.depth_at(&to_parent_hash)?;
+			to_branch.push(to.id());
+			to = backend.block_at(&to_parent_id)?;
+			to_depth = backend.depth_at(&to_parent_id)?;
 		}
 
 		while from_depth > to_depth {
-			let from_parent_hash = match from.parent_hash() {
-				Some(parent_hash) => parent_hash,
+			let from_parent_id = match from.parent_id() {
+				Some(parent_id) => parent_id,
 				None => {
-					assert!(to_depth == 0, "When parent_hash is None, depth should be 0");
+					assert!(to_depth == 0, "When parent_id is None, depth should be 0");
 					break;
 				}
 			};
 
-			from_branch.push(from.hash());
-			from = backend.block_at(&from_parent_hash)?;
-			from_depth = backend.depth_at(&from_parent_hash)?;
+			from_branch.push(from.id());
+			from = backend.block_at(&from_parent_id)?;
+			from_depth = backend.depth_at(&from_parent_id)?;
 		}
 	}
 
-	while from.hash() != to.hash() {
-		let to_parent_hash = match to.parent_hash() {
-			Some(parent_hash) => parent_hash,
+	while from.id() != to.id() {
+		let to_parent_id = match to.parent_id() {
+			Some(parent_id) => parent_id,
 			None => {
 				panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
 			}
 		};
 
-		let from_parent_hash = match from.parent_hash() {
-			Some(parent_hash) => parent_hash,
+		let from_parent_id = match from.parent_id() {
+			Some(parent_id) => parent_id,
 			None => {
 				panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
 			}
 		};
 
-		to_branch.push(to.hash());
-		to = backend.block_at(&to_parent_hash)?;
+		to_branch.push(to.id());
+		to = backend.block_at(&to_parent_id)?;
 
-		from_branch.push(from.hash());
-		from = backend.block_at(&from_parent_hash)?;
+		from_branch.push(from.id());
+		from = backend.block_at(&from_parent_id)?;
 	}
 
 	// add the pivot block. and append the reversed to-branch (note that it's reverse order originalls)
 	let pivot = from_branch.len();
-	from_branch.push(to.hash());
+	from_branch.push(to.id());
 	from_branch.extend(to_branch.into_iter().rev());
 
 	Ok(TreeRoute {

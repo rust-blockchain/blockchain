@@ -243,7 +243,7 @@ fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>,
 		// Import the built block.
 		let mut build_importer = backend_build.begin_import(&executor);
 		build_importer.import_raw(op);
-		build_importer.set_head(block.hash());
+		build_importer.set_head(block.id());
 		build_importer.commit().unwrap();
 
 		sender.unbounded_send(block).unwrap();
@@ -268,12 +268,12 @@ fn importer_thread(backend_import: SharedBackend<Context, MemoryBackend<Context>
 				let mut imported = Vec::new();
 
 				for (_, block) in &waiting {
-					if backend_import.contains(&block.parent_hash().unwrap()).unwrap() {
+					if backend_import.contains(&block.parent_id().unwrap()).unwrap() {
 						let mut importer = backend_import.begin_import(&executor);
 						importer.import_block(block.clone()).unwrap();
-						importer.set_head(block.hash());
+						importer.set_head(block.id());
 						importer.commit().unwrap();
-						imported.push(block.hash());
+						imported.push(block.id());
 					}
 				}
 
@@ -291,14 +291,14 @@ fn importer_thread(backend_import: SharedBackend<Context, MemoryBackend<Context>
 
 		// Import the block again to importer.
 		let mut importer = backend_import.begin_import(&executor);
-		if !backend_import.contains(&block.parent_hash().unwrap()).unwrap() {
-			request_sender.unbounded_send(Message::Request(block.parent_hash().unwrap())).unwrap();
-			waiting.insert(block.hash(), block);
+		if !backend_import.contains(&block.parent_id().unwrap()).unwrap() {
+			request_sender.unbounded_send(Message::Request(block.parent_id().unwrap())).unwrap();
+			waiting.insert(block.id(), block);
 
 			continue
 		}
 		importer.import_block(block.clone()).unwrap();
-		importer.set_head(block.hash());
+		importer.set_head(block.id());
 		importer.commit().unwrap();
 	}
 }

@@ -2,7 +2,7 @@ use primitive_types::H256;
 use blockchain::traits::{
 	Block as BlockT, BlockExecutor, BlockContext, ExtrinsicContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf, ExtrinsicOf, Taggable,
+	BlockOf, ExtrinsicOf, Taggable, Infallible
 };
 use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
@@ -10,29 +10,29 @@ use sha3::{Digest, Sha3_256};
 
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct Block {
-	hash: H256,
-	parent_hash: Option<H256>,
+	id: H256,
+	parent_id: Option<H256>,
 	extrinsics: Vec<Extrinsic>,
 }
 
 impl Block {
 	pub fn calculate_hash(&self) -> H256 {
-		let data = (self.parent_hash.clone(), self.extrinsics.clone()).encode();
+		let data = (self.parent_id.clone(), self.extrinsics.clone()).encode();
 		H256::from_slice(Sha3_256::digest(&data).as_slice())
 	}
 
 	pub fn verify_hash(&self) -> bool {
-		self.hash == self.calculate_hash()
+		self.id == self.calculate_hash()
 	}
 
 	pub fn fix_hash(&mut self) {
-		self.hash = self.calculate_hash();
+		self.id = self.calculate_hash();
 	}
 
 	pub fn genesis() -> Self {
 		let mut block = Block {
-			hash: H256::default(),
-			parent_hash: None,
+			id: H256::default(),
+			parent_id: None,
 			extrinsics: Vec::new(),
 		};
 		block.fix_hash();
@@ -41,19 +41,19 @@ impl Block {
 }
 
 impl BlockT for Block {
-	type Hash = H256;
+	type Identifier = H256;
 
-	fn parent_hash(&self) -> Option<H256> {
-		self.parent_hash
+	fn parent_id(&self) -> Option<H256> {
+		self.parent_id
 	}
 
-	fn hash(&self) -> H256 {
-		self.hash
+	fn id(&self) -> H256 {
+		self.id
 	}
 }
 
 impl Taggable for Block {
-	type Tag = ();
+	type Tag = Infallible;
 }
 
 pub struct Context;
@@ -148,7 +148,7 @@ impl BuilderExecutor<Context> for Executor {
 		block: &mut BlockOf<Context>,
 		_state: &mut ExternalitiesOf<Context>,
 	) -> Result<(), Self::Error> {
-		block.parent_hash = Some(block.hash);
+		block.parent_id = Some(block.id);
 		block.fix_hash();
 
 		Ok(())

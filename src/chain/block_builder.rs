@@ -2,7 +2,7 @@ use super::{Error, SharedBackend};
 use crate::backend::{Operation, ImportOperation};
 use crate::traits::{
 	ExtrinsicContext, Backend, BuilderExecutor,
-	BlockOf, HashOf, AsExternalities, ExtrinsicOf,
+	BlockOf, IdentifierOf, AsExternalities, ExtrinsicOf,
 };
 
 /// Block builder.
@@ -17,7 +17,7 @@ impl<'a, C: ExtrinsicContext, B, E> BlockBuilder<'a, C, B, E> where
 	E: BuilderExecutor<C>,
 {
 	/// Create a new block builder.
-	pub fn new(backend: &SharedBackend<C, B>, executor: &'a E, parent_hash: &HashOf<C>) -> Result<Self, Error> {
+	pub fn new(backend: &SharedBackend<C, B>, executor: &'a E, parent_hash: &IdentifierOf<C>) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 

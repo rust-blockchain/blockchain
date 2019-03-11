@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::{fmt, error as stderror};
 
 use crate::traits::{
-	HashOf, BlockOf, ExternalitiesOf, AsExternalities, BlockContext, Backend,
+	IdentifierOf, BlockOf, ExternalitiesOf, AsExternalities, BlockContext, Backend,
 	NullExternalities, StorageExternalities, Block, TagOf,
-	AuxiliaryKeyOf, AuxiliaryOf, Keyed, Taggable
+	AuxiliaryKeyOf, AuxiliaryOf, Keyed, Taggable, Tag, Uniqueness,
 };
 use super::{Operation, tree_route};
 
@@ -69,17 +69,17 @@ struct BlockData<C: BlockContext> {
 	block: BlockOf<C>,
 	state: MemoryState,
 	depth: usize,
-	children: Vec<HashOf<C>>,
+	children: Vec<IdentifierOf<C>>,
 	is_canon: bool,
 }
 
 /// Memory backend.
 pub struct MemoryBackend<C: BlockContext> {
-	blocks_and_states: HashMap<HashOf<C>, BlockData<C>>,
-	head: HashOf<C>,
-	genesis: HashOf<C>,
-	canon_depth_mappings: HashMap<usize, HashOf<C>>,
-	canon_tag_mappings: HashMap<TagOf<C>, HashOf<C>>,
+	blocks_and_states: HashMap<IdentifierOf<C>, BlockData<C>>,
+	head: IdentifierOf<C>,
+	genesis: IdentifierOf<C>,
+	canon_depth_mappings: HashMap<usize, IdentifierOf<C>>,
+	tag_mappings: HashMap<TagOf<C>, IdentifierOf<C>>,
 	auxiliaries: HashMap<AuxiliaryKeyOf<C>, AuxiliaryOf<C>>,
 }
 
@@ -90,26 +90,26 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 	type Operation = Operation<C, Self>;
 	type Error = Error;
 
-	fn head(&self) -> HashOf<C> {
+	fn head(&self) -> IdentifierOf<C> {
 		self.head
 	}
 
-	fn genesis(&self) -> HashOf<C> {
+	fn genesis(&self) -> IdentifierOf<C> {
 		self.genesis
 	}
 
 	fn contains(
 		&self,
-		hash: &HashOf<C>
+		id: &IdentifierOf<C>
 	) -> Result<bool, Error> {
-		Ok(self.blocks_and_states.contains_key(hash))
+		Ok(self.blocks_and_states.contains_key(id))
 	}
 
 	fn is_canon(
 		&self,
-		hash: &HashOf<C>
+		id: &IdentifierOf<C>
 	) -> Result<bool, Error> {
-		self.blocks_and_states.get(hash)
+		self.blocks_and_states.get(id)
 			.map(|data| data.is_canon)
 			.ok_or(Error::NotExist)
 	}
@@ -117,16 +117,16 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<HashOf<C>>, Error> {
+	) -> Result<Option<IdentifierOf<C>>, Error> {
 		Ok(self.canon_depth_mappings.get(&depth)
 		   .map(|h| h.clone()))
 	}
 
-	fn lookup_canon_tag(
+	fn lookup_tag(
 		&self,
 		tag: &TagOf<C>,
-	) -> Result<Option<HashOf<C>>, Error> {
-		Ok(self.canon_tag_mappings.get(tag)
+	) -> Result<Option<IdentifierOf<C>>, Error> {
+		Ok(self.tag_mappings.get(tag)
 		   .map(|h| h.clone()))
 	}
 
@@ -139,36 +139,36 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 
 	fn children_at(
 		&self,
-		hash: &HashOf<C>,
-	) -> Result<Vec<HashOf<C>>, Error> {
-		self.blocks_and_states.get(hash)
+		id: &IdentifierOf<C>,
+	) -> Result<Vec<IdentifierOf<C>>, Error> {
+		self.blocks_and_states.get(id)
 			.map(|data| data.children.clone())
 			.ok_or(Error::NotExist)
 	}
 
 	fn depth_at(
 		&self,
-		hash: &HashOf<C>
+		id: &IdentifierOf<C>
 	) -> Result<usize, Error> {
-		self.blocks_and_states.get(hash)
+		self.blocks_and_states.get(id)
 		   .map(|data| data.depth)
 		   .ok_or(Error::NotExist)
 	}
 
 	fn block_at(
 		&self,
-		hash: &HashOf<C>,
+		id: &IdentifierOf<C>,
 	) -> Result<BlockOf<C>, Error> {
-		self.blocks_and_states.get(hash)
+		self.blocks_and_states.get(id)
 			.map(|data| data.block.clone())
 			.ok_or(Error::NotExist)
 	}
 
 	fn state_at(
 		&self,
-		hash: &HashOf<C>,
+		id: &IdentifierOf<C>,
 	) -> Result<MemoryState, Error> {
-		self.blocks_and_states.get(hash)
+		self.blocks_and_states.get(id)
 			.map(|data| data.state.clone())
 			.ok_or(Error::NotExist)
 	}
@@ -177,8 +177,8 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 		&mut self,
 		operation: Operation<C, Self>,
 	) -> Result<(), Error> {
-		let mut parent_hashes = HashMap::new();
-		let mut importing: HashMap<HashOf<C>, BlockData<C>> = HashMap::new();
+		let mut parent_ides = HashMap::new();
+		let mut importing: HashMap<IdentifierOf<C>, BlockData<C>> = HashMap::new();
 		let mut verifying = operation.import_block;
 
 		// Do precheck to make sure the import operation is valid.
@@ -187,12 +187,12 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 			let mut next_verifying = Vec::new();
 
 			for op in verifying {
-				let parent_depth = match op.block.parent_hash() {
-					Some(parent_hash) => {
-						if self.contains(&parent_hash)? {
-							Some(self.depth_at(&parent_hash)?)
-						} else if importing.contains_key(&parent_hash) {
-							importing.get(&parent_hash)
+				let parent_depth = match op.block.parent_id() {
+					Some(parent_id) => {
+						if self.contains(&parent_id)? {
+							Some(self.depth_at(&parent_id)?)
+						} else if importing.contains_key(&parent_id) {
+							importing.get(&parent_id)
 								.map(|data| data.depth)
 						} else {
 							None
@@ -204,10 +204,10 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 
 				if let Some(depth) = depth {
 					progress = true;
-					if let Some(parent_hash) = op.block.parent_hash() {
-						parent_hashes.insert(op.block.hash(), parent_hash);
+					if let Some(parent_id) = op.block.parent_id() {
+						parent_ides.insert(op.block.id(), parent_id);
 					}
-					importing.insert(op.block.hash(), BlockData {
+					importing.insert(op.block.id(), BlockData {
 						block: op.block,
 						state: op.state,
 						depth,
@@ -242,36 +242,38 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 
 		self.blocks_and_states.extend(importing);
 
-		// Fix children at hashes.
-		for (hash, parent_hash) in parent_hashes {
-			self.blocks_and_states.get_mut(&parent_hash)
-				.expect("Parent hash are checked to exist or has been just imported; qed")
-				.children.push(hash);
+		// Fix children at ides.
+		for (id, parent_id) in parent_ides {
+			self.blocks_and_states.get_mut(&parent_id)
+				.expect("Parent id are checked to exist or has been just imported; qed")
+				.children.push(id);
 		}
 
 		if let Some(new_head) = operation.set_head {
 			let route = tree_route(self, &self.head, &new_head)
 				.expect("Blocks are checked to exist or importing; qed");
 
-			for hash in route.retracted() {
-				let mut block = self.blocks_and_states.get_mut(hash)
+			for id in route.retracted() {
+				let mut block = self.blocks_and_states.get_mut(id)
 					.expect("Block is fetched from tree_route; it must exist; qed");
 				let tags = block.block.tags();
 				block.is_canon = false;
 				self.canon_depth_mappings.remove(&block.depth);
 				for tag in tags {
-					self.canon_tag_mappings.remove(&tag);
+					if tag.uniqueness() == Uniqueness::Canonical {
+						self.tag_mappings.remove(&tag);
+					}
 				}
 			}
 
-			for hash in route.enacted() {
-				let mut block = self.blocks_and_states.get_mut(hash)
+			for id in route.enacted() {
+				let mut block = self.blocks_and_states.get_mut(id)
 					.expect("Block is fetched from tree_route; it must exist; qed");
 				let tags = block.block.tags();
 				block.is_canon = true;
-				self.canon_depth_mappings.insert(block.depth, *hash);
+				self.canon_depth_mappings.insert(block.depth, *id);
 				for tag in tags {
-					self.canon_tag_mappings.insert(tag, *hash);
+					self.tag_mappings.insert(tag, *id);
 				}
 			}
 
@@ -295,16 +297,16 @@ impl<C: BlockContext> MemoryBackend<C> where
 {
 	/// Create a new memory backend from a genesis block.
 	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
-		assert!(block.parent_hash().is_none(), "with_genesis must be provided with a genesis block");
+		assert!(block.parent_id().is_none(), "with_genesis must be provided with a genesis block");
 
-		let genesis_hash = block.hash();
+		let genesis_id = block.id();
 		let genesis_state = MemoryState {
 			storage: genesis_storage,
 		};
 		let genesis_tags = block.tags();
 		let mut blocks_and_states = HashMap::new();
 		blocks_and_states.insert(
-			block.hash(),
+			block.id(),
 			BlockData {
 				block,
 				state: genesis_state,
@@ -314,19 +316,19 @@ impl<C: BlockContext> MemoryBackend<C> where
 			}
 		);
 		let mut canon_depth_mappings = HashMap::new();
-		canon_depth_mappings.insert(0, genesis_hash);
-		let mut canon_tag_mappings = HashMap::new();
+		canon_depth_mappings.insert(0, genesis_id);
+		let mut tag_mappings = HashMap::new();
 		for tag in genesis_tags {
-			canon_tag_mappings.insert(tag, genesis_hash);
+			tag_mappings.insert(tag, genesis_id);
 		}
 
 		MemoryBackend {
 			blocks_and_states,
 			canon_depth_mappings,
-			canon_tag_mappings,
+			tag_mappings,
 			auxiliaries: Default::default(),
-			genesis: genesis_hash,
-			head: genesis_hash,
+			genesis: genesis_id,
+			head: genesis_id,
 		}
 	}
 }
@@ -339,19 +341,19 @@ mod tests {
 
 	#[derive(Clone)]
 	pub struct DummyBlock {
-		hash: usize,
-		parent_hash: usize,
+		id: usize,
+		parent_id: usize,
 	}
 
 	impl Block for DummyBlock {
-		type Hash = usize;
+		type Identifier = usize;
 
-		fn hash(&self) -> usize { self.hash }
-		fn parent_hash(&self) -> Option<usize> { if self.parent_hash == 0 { None } else { Some(self.parent_hash) } }
+		fn id(&self) -> usize { self.id }
+		fn parent_id(&self) -> Option<usize> { if self.parent_id == 0 { None } else { Some(self.parent_id) } }
 	}
 
 	impl Taggable for DummyBlock {
-		type Tag = ();
+		type Tag = Infallible;
 	}
 
 	pub trait CombinedExternalities: NullExternalities + StorageExternalities { }
@@ -391,8 +393,8 @@ mod tests {
 	fn all_traits_for_importer_are_satisfied() {
 		let backend = MemoryBackend::with_genesis(
 			DummyBlock {
-				hash: 1,
-				parent_hash: 0,
+				id: 1,
+				parent_id: 0,
 			},
 			Default::default()
 		);

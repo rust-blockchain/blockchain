@@ -6,18 +6,45 @@ use std::hash;
 /// A block contains a hash, and reference a parent block via parent hash.
 pub trait Block: Taggable + Clone {
 	/// Hash type of the block.
-	type Hash: Copy + Eq + hash::Hash;
+	type Identifier: Copy + Eq + hash::Hash;
 
 	/// Get the block hash.
-	fn hash(&self) -> Self::Hash;
+	fn id(&self) -> Self::Identifier;
 	/// Get the parent block hash. None if this block is genesis.
-	fn parent_hash(&self) -> Option<Self::Hash>;
+	fn parent_id(&self) -> Option<Self::Identifier>;
+}
+
+/// Uniqueness of a tag.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Uniqueness {
+	/// Tag is always unique.
+	Always,
+	/// Tag is unique for canonical chain.
+	Canonical,
+}
+
+/// Tag for a taggable object.
+pub trait Tag: Copy + Eq + hash::Hash {
+	/// Get the uniqueness of this tag.
+	fn uniqueness(&self) -> Uniqueness;
+}
+
+/// Infallible type.
+#[derive(PartialEq, Eq, Hash, Copy, Clone)]
+pub enum Infallible { }
+
+impl Tag for Infallible {
+	fn uniqueness(&self) -> Uniqueness {
+		unreachable!("Infallible can never be initialized; \
+					  this function contains self; \
+					  it will never be called; qed");
+	}
 }
 
 /// Taggable object.
 pub trait Taggable {
 	/// Tag type.
-	type Tag: Copy + Eq + hash::Hash;
+	type Tag: Tag;
 
 	/// Return the tags of this object.
 	fn tags(&self) -> Vec<Self::Tag> {
@@ -30,7 +57,7 @@ pub type ExternalitiesOf<C> = <C as BlockContext>::Externalities;
 /// Block of a context.
 pub type BlockOf<C> = <C as BlockContext>::Block;
 /// Hash of a context.
-pub type HashOf<C> = <BlockOf<C> as Block>::Hash;
+pub type IdentifierOf<C> = <BlockOf<C> as Block>::Identifier;
 /// Extrinsic of a context.
 pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
 /// Auxiliary key of a context.
@@ -100,33 +127,33 @@ pub trait Backend<C: BlockContext>: Sized {
 	type Error: stderror::Error + 'static;
 
 	/// Get the genesis hash of the chain.
-	fn genesis(&self) -> HashOf<C>;
+	fn genesis(&self) -> IdentifierOf<C>;
 	/// Get the head of the chain.
-	fn head(&self) -> HashOf<C>;
+	fn head(&self) -> IdentifierOf<C>;
 
 	/// Check whether a hash is contained in the chain.
 	fn contains(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<bool, Self::Error>;
 
 	/// Check whether a block is canonical.
 	fn is_canon(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<bool, Self::Error>;
 
 	/// Look up a canonical block via its depth.
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<HashOf<C>>, Self::Error>;
+	) -> Result<Option<IdentifierOf<C>>, Self::Error>;
 
-	/// Look up a canonical block via its tag.
-	fn lookup_canon_tag(
+	/// Look up a block via its tag.
+	fn lookup_tag(
 		&self,
 		key: &TagOf<C>,
-	) -> Result<Option<HashOf<C>>, Self::Error>;
+	) -> Result<Option<IdentifierOf<C>>, Self::Error>;
 
 	/// Get the auxiliary value by key.
 	fn auxiliary(
@@ -137,25 +164,25 @@ pub trait Backend<C: BlockContext>: Sized {
 	/// Get the depth of a block.
 	fn depth_at(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<usize, Self::Error>;
 
 	/// Get children of a block.
 	fn children_at(
 		&self,
-		hash: &HashOf<C>,
-	) -> Result<Vec<HashOf<C>>, Self::Error>;
+		hash: &IdentifierOf<C>,
+	) -> Result<Vec<IdentifierOf<C>>, Self::Error>;
 
 	/// Get the state object of a block.
 	fn state_at(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<Self::State, Self::Error>;
 
 	/// Get the object of a block.
 	fn block_at(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<BlockOf<C>, Self::Error>;
 
 	/// Commit operation.

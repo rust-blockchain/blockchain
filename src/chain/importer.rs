@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use std::marker::PhantomData;
 use super::Error;
 use crate::backend::{Operation, ImportOperation};
-use crate::traits::{HashOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, BlockContext, AuxiliaryOf, AuxiliaryKeyOf, TagOf};
+use crate::traits::{IdentifierOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, BlockContext, AuxiliaryOf, AuxiliaryKeyOf, TagOf};
 
 /// A shared backend that also allows atomic import operation.
 pub struct SharedBackend<C: BlockContext, B: Backend<C>> {
@@ -24,13 +24,13 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	}
 
 	/// Get the genesis hash of the chain.
-	pub fn genesis(&self) -> HashOf<C> {
+	pub fn genesis(&self) -> IdentifierOf<C> {
 		self.backend.read().expect("backend lock is poisoned")
 			.genesis()
 	}
 
 	/// Get the head of the chain.
-	pub fn head(&self) -> HashOf<C> {
+	pub fn head(&self) -> IdentifierOf<C> {
 		self.backend.read().expect("backend lock is poisoned")
 			.head()
 	}
@@ -38,7 +38,7 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	/// Check whether a hash is contained in the chain.
 	pub fn contains(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<bool, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.contains(hash)
@@ -47,7 +47,7 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	/// Check whether a block is canonical.
 	pub fn is_canon(
 		&self,
-		hash: &HashOf<C>
+		hash: &IdentifierOf<C>
 	) -> Result<bool, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.is_canon(hash)
@@ -57,18 +57,18 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	pub fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<HashOf<C>>, B::Error> {
+	) -> Result<Option<IdentifierOf<C>>, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.lookup_canon_depth(depth)
 	}
 
-	/// Look up a canonical block via its tag.
-	pub fn lookup_canon_tag(
+	/// Look up a block via its tag.
+	pub fn lookup_tag(
 		&self,
 		tag: &TagOf<C>,
-	) -> Result<Option<HashOf<C>>, B::Error> {
+	) -> Result<Option<IdentifierOf<C>>, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
-			.lookup_canon_tag(tag)
+			.lookup_tag(tag)
 	}
 
 	/// Get the auxiliary value by key.
@@ -83,7 +83,7 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	/// Get the depth of a block.
 	pub fn depth_at(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<usize, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.depth_at(hash)
@@ -92,8 +92,8 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	/// Get children of a block.
 	pub fn children_at(
 		&self,
-		hash: &HashOf<C>,
-	) -> Result<Vec<HashOf<C>>, B::Error> {
+		hash: &IdentifierOf<C>,
+	) -> Result<Vec<IdentifierOf<C>>, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.children_at(hash)
 	}
@@ -101,7 +101,7 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	/// Get the state object of a block.
 	pub fn state_at(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<B::State, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.state_at(hash)
@@ -110,7 +110,7 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	/// Get the object of a block.
 	pub fn block_at(
 		&self,
-		hash: &HashOf<C>,
+		hash: &IdentifierOf<C>,
 	) -> Result<BlockOf<C>, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.block_at(hash)
@@ -160,7 +160,7 @@ impl<'a, 'executor, C: BlockContext, B, E> Importer<'a, 'executor, C, B, E> wher
 	/// Import a new block.
 	pub fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Error> {
 		let mut state = self.backend
-			.state_at(&block.parent_hash().ok_or(Error::IsGenesis)?)
+			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 		self.executor.execute_block(&block, state.as_externalities())
 			.map_err(|e| Error::Executor(Box::new(e)))?;
@@ -177,7 +177,7 @@ impl<'a, 'executor, C: BlockContext, B, E> Importer<'a, 'executor, C, B, E> wher
 	}
 
 	/// Set head to given hash.
-	pub fn set_head(&mut self, head: HashOf<C>) {
+	pub fn set_head(&mut self, head: IdentifierOf<C>) {
 		self.pending.set_head = Some(head);
 	}
 
