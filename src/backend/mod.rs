@@ -6,10 +6,10 @@ mod route;
 pub use self::memory::{MemoryState, MemoryBackend};
 pub use self::route::{tree_route, TreeRoute};
 
-use crate::traits::{Backend, BlockContext, BlockOf, IdentifierOf, AuxiliaryOf, AuxiliaryKeyOf};
+use crate::traits::{Backend, ImportContext, BlockOf, IdentifierOf, AuxiliaryOf, AuxiliaryKeyOf};
 
 /// Import operation.
-pub struct ImportOperation<C: BlockContext, B: Backend<C>> {
+pub struct ImportOperation<C: ImportContext, B: Backend<C>> {
 	/// Block to be imported.
 	pub block: BlockOf<C>,
 	/// Associated state of the block.
@@ -17,7 +17,7 @@ pub struct ImportOperation<C: BlockContext, B: Backend<C>> {
 }
 
 /// Operation for a backend.
-pub struct Operation<C: BlockContext, B: Backend<C>> {
+pub struct Operation<C: ImportContext, B: Backend<C>> {
 	/// Import operation.
 	pub import_block: Vec<ImportOperation<C, B>>,
 	/// Set head operation.
@@ -28,7 +28,7 @@ pub struct Operation<C: BlockContext, B: Backend<C>> {
 	pub remove_auxiliaries: Vec<AuxiliaryKeyOf<C>>,
 }
 
-impl<C: BlockContext, B> Default for Operation<C, B> where
+impl<C: ImportContext, B> Default for Operation<C, B> where
 	B: Backend<C>
 {
 	fn default() -> Self {

@@ -2,16 +2,16 @@ use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use std::marker::PhantomData;
 use super::Error;
 use crate::backend::{Operation, ImportOperation};
-use crate::traits::{IdentifierOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, BlockContext, AuxiliaryOf, AuxiliaryKeyOf};
+use crate::traits::{IdentifierOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, ImportContext, AuxiliaryOf, AuxiliaryKeyOf};
 
 /// A shared backend that also allows atomic import operation.
-pub struct SharedBackend<C: BlockContext, B: Backend<C>> {
+pub struct SharedBackend<C: ImportContext, B: Backend<C>> {
 	backend: Arc<RwLock<B>>,
 	import_lock: Arc<Mutex<()>>,
 	_marker: PhantomData<C>,
 }
 
-impl<C: BlockContext, B> SharedBackend<C, B> where
+impl<C: ImportContext, B> SharedBackend<C, B> where
 	B: Backend<C, Operation=Operation<C, B>>
 {
 	/// Create a new shared backend.
@@ -121,7 +121,7 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	}
 }
 
-impl<C: BlockContext, B: Backend<C>> Clone for SharedBackend<C, B> {
+impl<C: ImportContext, B: Backend<C>> Clone for SharedBackend<C, B> {
 	fn clone(&self) -> Self {
 		SharedBackend {
 			backend: self.backend.clone(),
@@ -132,14 +132,14 @@ impl<C: BlockContext, B: Backend<C>> Clone for SharedBackend<C, B> {
 }
 
 /// Block importer.
-pub struct Importer<'a, 'executor, C: BlockContext, B: Backend<C>, E> {
+pub struct Importer<'a, 'executor, C: ImportContext, B: Backend<C>, E> {
 	executor: &'executor E,
 	backend: &'a SharedBackend<C, B>,
 	pending: Operation<C, B>,
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, C: BlockContext, B, E> Importer<'a, 'executor, C, B, E> where
+impl<'a, 'executor, C: ImportContext, B, E> Importer<'a, 'executor, C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BlockExecutor<C>,
 {

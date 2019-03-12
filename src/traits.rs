@@ -15,27 +15,32 @@ pub trait Block: Clone {
 }
 
 /// Externalities of a context.
-pub type ExternalitiesOf<C> = <C as BlockContext>::Externalities;
+pub type ExternalitiesOf<C> = <C as ExecuteContext>::Externalities;
 /// Block of a context.
-pub type BlockOf<C> = <C as BlockContext>::Block;
+pub type BlockOf<C> = <C as ExecuteContext>::Block;
 /// Hash of a context.
 pub type IdentifierOf<C> = <BlockOf<C> as Block>::Identifier;
 /// Extrinsic of a context.
-pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
+pub type ExtrinsicOf<C> = <C as BuildContext>::Extrinsic;
 /// Auxiliary key of a context.
 pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<C>>::Key;
 /// Auxiliary of a context.
-pub type AuxiliaryOf<C> = <C as BlockContext>::Auxiliary;
+pub type AuxiliaryOf<C> = <C as ImportContext>::Auxiliary;
 
 /// Context containing all basic information of block execution.
 ///
-/// This is everything needed to build a consensus layer on top, except an
-/// executor.
-pub trait BlockContext {
+/// This is everything needed to build an execution layer for a block.
+pub trait ExecuteContext {
 	/// Block type
 	type Block: Block;
 	/// Externalities type
 	type Externalities: ?Sized;
+}
+
+/// Context containing importer information.
+///
+/// This is everything needed to build a consensus layer for a block.
+pub trait ImportContext: ExecuteContext {
 	/// Auxiliary type
 	type Auxiliary: Auxiliary<Self>;
 }
@@ -44,13 +49,13 @@ pub trait BlockContext {
 ///
 /// This is everything needed to build a proposer layer on top, except an
 /// executor.
-pub trait ExtrinsicContext: BlockContext {
+pub trait BuildContext: ExecuteContext {
 	/// Extrinsic type
 	type Extrinsic;
 }
 
 /// A value where the key is contained in.
-pub trait Auxiliary<C: ?Sized + BlockContext>: Clone {
+pub trait Auxiliary<C: ?Sized + ExecuteContext>: Clone {
 	/// Key type
 	type Key: Copy + Eq + hash::Hash;
 
@@ -65,7 +70,7 @@ pub trait Auxiliary<C: ?Sized + BlockContext>: Clone {
 	}
 }
 
-impl<C: BlockContext> Auxiliary<C> for () {
+impl<C: ExecuteContext> Auxiliary<C> for () {
 	type Key = ();
 
 	fn key(&self) -> () { () }
@@ -91,7 +96,7 @@ pub trait StorageExternalities {
 }
 
 /// Backend for a block context.
-pub trait Backend<C: BlockContext>: Sized {
+pub trait Backend<C: ImportContext>: Sized {
 	/// State type
 	type State: AsExternalities<ExternalitiesOf<C>>;
 	/// Operation type
@@ -160,16 +165,16 @@ pub trait Backend<C: BlockContext>: Sized {
 }
 
 /// Trait used for committing block, usually built on top of a backend.
-pub trait CommitBlock<C: BlockContext> {
+pub trait ImportBlock<C: ImportContext> {
 	/// Error type
 	type Error: stderror::Error + 'static;
 
 	/// Commit a block into the backend, and handle consensus and auxiliary.
-	fn commit_block(&mut self, block: BlockOf<C>) -> Result<(), Self::Error>;
+	fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Self::Error>;
 }
 
 /// Block executor
-pub trait BlockExecutor<C: BlockContext>: Sized {
+pub trait BlockExecutor<C: ExecuteContext>: Sized {
 	/// Error type
 	type Error: stderror::Error + 'static;
 
@@ -182,7 +187,7 @@ pub trait BlockExecutor<C: BlockContext>: Sized {
 }
 
 /// Builder executor
-pub trait BuilderExecutor<C: ExtrinsicContext>: Sized {
+pub trait BuilderExecutor<C: BuildContext>: Sized {
 	/// Error type
 	type Error: stderror::Error + 'static;
 

@@ -1,18 +1,19 @@
 use super::{Error, SharedBackend};
 use crate::backend::{Operation, ImportOperation};
 use crate::traits::{
-	ExtrinsicContext, Backend, BuilderExecutor,
+	Backend, BuilderExecutor,
 	BlockOf, IdentifierOf, AsExternalities, ExtrinsicOf,
+	ImportContext, BuildContext,
 };
 
 /// Block builder.
-pub struct BlockBuilder<'a, C: ExtrinsicContext, B: Backend<C>, E> {
+pub struct BlockBuilder<'a, C: ImportContext + BuildContext, B: Backend<C>, E> {
 	executor: &'a E,
 	pending_block: BlockOf<C>,
 	pending_state: B::State,
 }
 
-impl<'a, C: ExtrinsicContext, B, E> BlockBuilder<'a, C, B, E> where
+impl<'a, C: ImportContext + BuildContext, B, E> BlockBuilder<'a, C, B, E> where
 	B: Backend<C, Operation=Operation<C, B>>,
 	E: BuilderExecutor<C>,
 {

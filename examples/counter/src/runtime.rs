@@ -1,6 +1,6 @@
 use primitive_types::H256;
 use blockchain::traits::{
-	Block as BlockT, BlockExecutor, BlockContext, ExtrinsicContext,
+	Block as BlockT, BlockExecutor, ImportContext, ExecuteContext, BuildContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
 	BlockOf, ExtrinsicOf,
 };
@@ -10,29 +10,29 @@ use sha3::{Digest, Sha3_256};
 
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct Block {
-	id: H256,
-	parent_id: Option<H256>,
+	hash: H256,
+	parent_hash: Option<H256>,
 	extrinsics: Vec<Extrinsic>,
 }
 
 impl Block {
 	pub fn calculate_hash(&self) -> H256 {
-		let data = (self.parent_id.clone(), self.extrinsics.clone()).encode();
+		let data = (self.parent_hash.clone(), self.extrinsics.clone()).encode();
 		H256::from_slice(Sha3_256::digest(&data).as_slice())
 	}
 
 	pub fn verify_hash(&self) -> bool {
-		self.id == self.calculate_hash()
+		self.hash == self.calculate_hash()
 	}
 
 	pub fn fix_hash(&mut self) {
-		self.id = self.calculate_hash();
+		self.hash = self.calculate_hash();
 	}
 
 	pub fn genesis() -> Self {
 		let mut block = Block {
-			id: H256::default(),
-			parent_id: None,
+			hash: H256::default(),
+			parent_hash: None,
 			extrinsics: Vec::new(),
 		};
 		block.fix_hash();
@@ -44,19 +44,22 @@ impl BlockT for Block {
 	type Identifier = H256;
 
 	fn parent_id(&self) -> Option<H256> {
-		self.parent_id
+		self.parent_hash
 	}
 
 	fn id(&self) -> H256 {
-		self.id
+		self.hash
 	}
 }
 
 pub struct Context;
 
-impl BlockContext for Context {
+impl ExecuteContext for Context {
 	type Block = Block;
 	type Externalities = dyn StorageExternalities + 'static;
+}
+
+impl ImportContext for Context {
 	type Auxiliary = ();
 }
 
@@ -65,7 +68,7 @@ pub enum Extrinsic {
 	Add(u128),
 }
 
-impl ExtrinsicContext for Context {
+impl BuildContext for Context {
 	type Extrinsic = Extrinsic;
 }
 
@@ -144,7 +147,7 @@ impl BuilderExecutor<Context> for Executor {
 		block: &mut BlockOf<Context>,
 		_state: &mut ExternalitiesOf<Context>,
 	) -> Result<(), Self::Error> {
-		block.parent_id = Some(block.id);
+		block.parent_hash = Some(block.hash);
 		block.fix_hash();
 
 		Ok(())

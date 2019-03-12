@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::{fmt, error as stderror};
 
 use crate::traits::{
-	IdentifierOf, BlockOf, ExternalitiesOf, AsExternalities, BlockContext, Backend,
+	IdentifierOf, BlockOf, ExternalitiesOf, AsExternalities, ImportContext, Backend,
 	NullExternalities, StorageExternalities, Block,
 	AuxiliaryKeyOf, AuxiliaryOf, Auxiliary,
 };
@@ -65,7 +65,7 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
-struct BlockData<C: BlockContext> {
+struct BlockData<C: ImportContext> {
 	block: BlockOf<C>,
 	state: MemoryState,
 	depth: usize,
@@ -74,7 +74,7 @@ struct BlockData<C: BlockContext> {
 }
 
 /// Memory backend.
-pub struct MemoryBackend<C: BlockContext> {
+pub struct MemoryBackend<C: ImportContext> {
 	blocks_and_states: HashMap<IdentifierOf<C>, BlockData<C>>,
 	head: IdentifierOf<C>,
 	genesis: IdentifierOf<C>,
@@ -82,7 +82,7 @@ pub struct MemoryBackend<C: BlockContext> {
 	auxiliaries: HashMap<AuxiliaryKeyOf<C>, AuxiliaryOf<C>>,
 }
 
-impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
+impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
 {
 	type State = MemoryState;
@@ -282,7 +282,7 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 	}
 }
 
-impl<C: BlockContext> MemoryBackend<C> where
+impl<C: ImportContext> MemoryBackend<C> where
 	MemoryState: AsExternalities<ExternalitiesOf<C>>
 {
 	/// Create a new memory backend from a genesis block.
@@ -349,9 +349,12 @@ mod tests {
 	#[allow(dead_code)]
 	pub struct DummyContext;
 
-	impl BlockContext for DummyContext {
+	impl ExecuteContext for DummyContext {
 		type Block = DummyBlock;
 		type Externalities = dyn CombinedExternalities + 'static;
+	}
+
+	impl ImportContext for DummyContext {
 		type Auxiliary = ();
 	}
 
