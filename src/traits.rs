@@ -23,7 +23,7 @@ pub type IdentifierOf<C> = <BlockOf<C> as Block>::Identifier;
 /// Extrinsic of a context.
 pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
 /// Auxiliary key of a context.
-pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Keyed>::Key;
+pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<C>>::Key;
 /// Auxiliary of a context.
 pub type AuxiliaryOf<C> = <C as BlockContext>::Auxiliary;
 
@@ -34,7 +34,7 @@ pub trait BlockContext {
 	/// Externalities type
 	type Externalities: ?Sized;
 	/// Auxiliary type
-	type Auxiliary: Keyed + Clone;
+	type Auxiliary: Auxiliary<Self>;
 }
 
 /// Context allowing block construction via extrinsic.
@@ -44,15 +44,22 @@ pub trait ExtrinsicContext: BlockContext {
 }
 
 /// A value where the key is contained in.
-pub trait Keyed {
+pub trait Auxiliary<C: ?Sized + BlockContext>: Clone {
 	/// Key type
 	type Key: Copy + Eq + hash::Hash;
 
 	/// Return the key of this object.
 	fn key(&self) -> Self::Key;
+	/// Return block ids associated with this auxiliary. If the backend
+	/// removes any of the blocks listed here, it is expected to remove
+	/// this auxiliary entry, and trigger a recalculation for the
+	/// consensus engine.
+	fn associated(&self) -> Vec<IdentifierOf<C>> {
+		Vec::new()
+	}
 }
 
-impl Keyed for () {
+impl<C: BlockContext> Auxiliary<C> for () {
 	type Key = ();
 
 	fn key(&self) -> () { () }

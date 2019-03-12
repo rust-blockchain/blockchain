@@ -4,7 +4,7 @@ use std::{fmt, error as stderror};
 use crate::traits::{
 	IdentifierOf, BlockOf, ExternalitiesOf, AsExternalities, BlockContext, Backend,
 	NullExternalities, StorageExternalities, Block,
-	AuxiliaryKeyOf, AuxiliaryOf, Keyed,
+	AuxiliaryKeyOf, AuxiliaryOf, Auxiliary,
 };
 use super::{Operation, tree_route};
 
