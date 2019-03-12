@@ -26,6 +26,12 @@ pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
 pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<C>>::Key;
 /// Auxiliary of a context.
 pub type AuxiliaryOf<C> = <C as BlockContext>::Auxiliary;
+/// Block executor of a context.
+pub type BlockExecutorOf<C> = <C as BlockContext>::BlockExecutor;
+/// Builder executor of a context.
+pub type BuilderExecutorOf<C> = <C as ExtrinsicContext>::BuilderExecutor;
+/// Error type of a context.
+pub type ErrorOf<C> = <BlockExecutorOf<C> as BlockExecutor<C>>::Error;
 
 /// Context containing all basic information of block execution.
 pub trait BlockContext {
@@ -35,12 +41,16 @@ pub trait BlockContext {
 	type Externalities: ?Sized;
 	/// Auxiliary type
 	type Auxiliary: Auxiliary<Self>;
+	/// Block executor
+	type BlockExecutor: BlockExecutor<Self>;
 }
 
 /// Context allowing block construction via extrinsic.
 pub trait ExtrinsicContext: BlockContext {
 	/// Extrinsic type
 	type Extrinsic;
+	/// Extrinsic executor
+	type BuilderExecutor: BuilderExecutor<Self, Error=ErrorOf<Self>>;
 }
 
 /// A value where the key is contained in.
@@ -85,7 +95,7 @@ pub trait StorageExternalities {
 }
 
 /// Backend for a block context.
-pub trait Backend<C: BlockContext>: Sized {
+pub trait Backend<C: ?Sized + BlockContext>: Sized {
 	/// State type
 	type State: AsExternalities<ExternalitiesOf<C>>;
 	/// Operation type
@@ -154,7 +164,7 @@ pub trait Backend<C: BlockContext>: Sized {
 }
 
 /// Trait used for committing block, usually built on top of a backend.
-pub trait CommitBlock<C: BlockContext> {
+pub trait CommitBlock<C: ?Sized + BlockContext> {
 	/// Error type
 	type Error: stderror::Error + 'static;
 
@@ -163,7 +173,7 @@ pub trait CommitBlock<C: BlockContext> {
 }
 
 /// Block executor
-pub trait BlockExecutor<C: BlockContext>: Sized {
+pub trait BlockExecutor<C: ?Sized + BlockContext>: Sized {
 	/// Error type
 	type Error: stderror::Error + 'static;
 
@@ -176,7 +186,7 @@ pub trait BlockExecutor<C: BlockContext>: Sized {
 }
 
 /// Builder executor
-pub trait BuilderExecutor<C: ExtrinsicContext>: Sized {
+pub trait BuilderExecutor<C: ?Sized + ExtrinsicContext>: Sized {
 	/// Error type
 	type Error: stderror::Error + 'static;
 

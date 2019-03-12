@@ -3,21 +3,21 @@ use crate::backend::{Operation, ImportOperation};
 use crate::traits::{
 	ExtrinsicContext, Backend, BuilderExecutor,
 	BlockOf, IdentifierOf, AsExternalities, ExtrinsicOf,
+	BuilderExecutorOf,
 };
 
 /// Block builder.
-pub struct BlockBuilder<'a, C: ExtrinsicContext, B: Backend<C>, E> {
-	executor: &'a E,
+pub struct BlockBuilder<'a, C: ExtrinsicContext, B: Backend<C>> {
+	executor: &'a BuilderExecutorOf<C>,
 	pending_block: BlockOf<C>,
 	pending_state: B::State,
 }
 
-impl<'a, C: ExtrinsicContext, B, E> BlockBuilder<'a, C, B, E> where
+impl<'a, C: ExtrinsicContext, B> BlockBuilder<'a, C, B> where
 	B: Backend<C, Operation=Operation<C, B>>,
-	E: BuilderExecutor<C>,
 {
 	/// Create a new block builder.
-	pub fn new(backend: &SharedBackend<C, B>, executor: &'a E, parent_hash: &IdentifierOf<C>) -> Result<Self, Error> {
+	pub fn new(backend: &SharedBackend<C, B>, executor: &'a BuilderExecutorOf<C>, parent_hash: &IdentifierOf<C>) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 
