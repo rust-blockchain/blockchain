@@ -231,6 +231,15 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 			}
 		}
 
+		// Do precheck to make sure auxiliary is valid.
+		for aux in &operation.insert_auxiliaries {
+			for id in aux.associated() {
+				if !(self.contains(&id)? || importing.contains_key(&id)) {
+					return Err(Error::InvalidOperation);
+				}
+			}
+		}
+
 		self.blocks_and_states.extend(importing);
 
 		// Fix children at ides.
