@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use std::marker::PhantomData;
 use super::Error;
 use crate::backend::{Operation, ImportOperation};
-use crate::traits::{IdentifierOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, BlockContext, AuxiliaryOf, AuxiliaryKeyOf, TagOf};
+use crate::traits::{IdentifierOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, BlockContext, AuxiliaryOf, AuxiliaryKeyOf};
 
 /// A shared backend that also allows atomic import operation.
 pub struct SharedBackend<C: BlockContext, B: Backend<C>> {
@@ -60,15 +60,6 @@ impl<C: BlockContext, B> SharedBackend<C, B> where
 	) -> Result<Option<IdentifierOf<C>>, B::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.lookup_canon_depth(depth)
-	}
-
-	/// Look up a block via its tag.
-	pub fn lookup_tag(
-		&self,
-		tag: &TagOf<C>,
-	) -> Result<Option<IdentifierOf<C>>, B::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.lookup_tag(tag)
 	}
 
 	/// Get the auxiliary value by key.

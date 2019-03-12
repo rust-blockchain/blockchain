@@ -3,8 +3,8 @@ use std::{fmt, error as stderror};
 
 use crate::traits::{
 	IdentifierOf, BlockOf, ExternalitiesOf, AsExternalities, BlockContext, Backend,
-	NullExternalities, StorageExternalities, Block, TagOf,
-	AuxiliaryKeyOf, AuxiliaryOf, Keyed, Taggable, Tag, Uniqueness,
+	NullExternalities, StorageExternalities, Block,
+	AuxiliaryKeyOf, AuxiliaryOf, Keyed,
 };
 use super::{Operation, tree_route};
 
@@ -79,7 +79,6 @@ pub struct MemoryBackend<C: BlockContext> {
 	head: IdentifierOf<C>,
 	genesis: IdentifierOf<C>,
 	canon_depth_mappings: HashMap<usize, IdentifierOf<C>>,
-	tag_mappings: HashMap<TagOf<C>, IdentifierOf<C>>,
 	auxiliaries: HashMap<AuxiliaryKeyOf<C>, AuxiliaryOf<C>>,
 }
 
@@ -119,14 +118,6 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 		depth: usize,
 	) -> Result<Option<IdentifierOf<C>>, Error> {
 		Ok(self.canon_depth_mappings.get(&depth)
-		   .map(|h| h.clone()))
-	}
-
-	fn lookup_tag(
-		&self,
-		tag: &TagOf<C>,
-	) -> Result<Option<IdentifierOf<C>>, Error> {
-		Ok(self.tag_mappings.get(tag)
 		   .map(|h| h.clone()))
 	}
 
@@ -256,25 +247,15 @@ impl<C: BlockContext> Backend<C> for MemoryBackend<C> where
 			for id in route.retracted() {
 				let mut block = self.blocks_and_states.get_mut(id)
 					.expect("Block is fetched from tree_route; it must exist; qed");
-				let tags = block.block.tags();
 				block.is_canon = false;
 				self.canon_depth_mappings.remove(&block.depth);
-				for tag in tags {
-					if tag.uniqueness() == Uniqueness::Canonical {
-						self.tag_mappings.remove(&tag);
-					}
-				}
 			}
 
 			for id in route.enacted() {
 				let mut block = self.blocks_and_states.get_mut(id)
 					.expect("Block is fetched from tree_route; it must exist; qed");
-				let tags = block.block.tags();
 				block.is_canon = true;
 				self.canon_depth_mappings.insert(block.depth, *id);
-				for tag in tags {
-					self.tag_mappings.insert(tag, *id);
-				}
 			}
 
 			self.head = new_head;
@@ -303,7 +284,6 @@ impl<C: BlockContext> MemoryBackend<C> where
 		let genesis_state = MemoryState {
 			storage: genesis_storage,
 		};
-		let genesis_tags = block.tags();
 		let mut blocks_and_states = HashMap::new();
 		blocks_and_states.insert(
 			block.id(),
@@ -317,15 +297,10 @@ impl<C: BlockContext> MemoryBackend<C> where
 		);
 		let mut canon_depth_mappings = HashMap::new();
 		canon_depth_mappings.insert(0, genesis_id);
-		let mut tag_mappings = HashMap::new();
-		for tag in genesis_tags {
-			tag_mappings.insert(tag, genesis_id);
-		}
 
 		MemoryBackend {
 			blocks_and_states,
 			canon_depth_mappings,
-			tag_mappings,
 			auxiliaries: Default::default(),
 			genesis: genesis_id,
 			head: genesis_id,
@@ -350,10 +325,6 @@ mod tests {
 
 		fn id(&self) -> usize { self.id }
 		fn parent_id(&self) -> Option<usize> { if self.parent_id == 0 { None } else { Some(self.parent_id) } }
-	}
-
-	impl Taggable for DummyBlock {
-		type Tag = Infallible;
 	}
 
 	pub trait CombinedExternalities: NullExternalities + StorageExternalities { }

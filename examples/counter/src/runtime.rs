@@ -2,7 +2,7 @@ use primitive_types::H256;
 use blockchain::traits::{
 	Block as BlockT, BlockExecutor, BlockContext, ExtrinsicContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf, ExtrinsicOf, Taggable, Infallible
+	BlockOf, ExtrinsicOf,
 };
 use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
@@ -50,10 +50,6 @@ impl BlockT for Block {
 	fn id(&self) -> H256 {
 		self.id
 	}
-}
-
-impl Taggable for Block {
-	type Tag = Infallible;
 }
 
 pub struct Context;

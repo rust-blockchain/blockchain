@@ -4,7 +4,7 @@ use std::error as stderror;
 use std::hash;
 
 /// A block contains a hash, and reference a parent block via parent hash.
-pub trait Block: Taggable + Clone {
+pub trait Block: Clone {
 	/// Hash type of the block.
 	type Identifier: Copy + Eq + hash::Hash;
 
@@ -12,44 +12,6 @@ pub trait Block: Taggable + Clone {
 	fn id(&self) -> Self::Identifier;
 	/// Get the parent block hash. None if this block is genesis.
 	fn parent_id(&self) -> Option<Self::Identifier>;
-}
-
-/// Uniqueness of a tag.
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Uniqueness {
-	/// Tag is always unique.
-	Always,
-	/// Tag is unique for canonical chain.
-	Canonical,
-}
-
-/// Tag for a taggable object.
-pub trait Tag: Copy + Eq + hash::Hash {
-	/// Get the uniqueness of this tag.
-	fn uniqueness(&self) -> Uniqueness;
-}
-
-/// Infallible type.
-#[derive(PartialEq, Eq, Hash, Copy, Clone)]
-pub enum Infallible { }
-
-impl Tag for Infallible {
-	fn uniqueness(&self) -> Uniqueness {
-		unreachable!("Infallible can never be initialized; \
-					  this function contains self; \
-					  it will never be called; qed");
-	}
-}
-
-/// Taggable object.
-pub trait Taggable {
-	/// Tag type.
-	type Tag: Tag;
-
-	/// Return the tags of this object.
-	fn tags(&self) -> Vec<Self::Tag> {
-		Vec::new()
-	}
 }
 
 /// Externalities of a context.
@@ -64,8 +26,6 @@ pub type ExtrinsicOf<C> = <C as ExtrinsicContext>::Extrinsic;
 pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Keyed>::Key;
 /// Auxiliary of a context.
 pub type AuxiliaryOf<C> = <C as BlockContext>::Auxiliary;
-/// Tag of a context.
-pub type TagOf<C> = <BlockOf<C> as Taggable>::Tag;
 
 /// Context containing all basic information of block execution.
 pub trait BlockContext {
@@ -147,12 +107,6 @@ pub trait Backend<C: BlockContext>: Sized {
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<IdentifierOf<C>>, Self::Error>;
-
-	/// Look up a block via its tag.
-	fn lookup_tag(
-		&self,
-		key: &TagOf<C>,
 	) -> Result<Option<IdentifierOf<C>>, Self::Error>;
 
 	/// Get the auxiliary value by key.
