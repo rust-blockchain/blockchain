@@ -1,4 +1,18 @@
 //! Common trait definitions related to block context.
+//!
+//! The consensus layer for this crate works on different levels.
+//!
+//! On execute level, one uses `ExecuteContext`, and the type parameters defined
+//! allows it to be used by an executor -- given a block, and an externalities,
+//! it executes the state. This is suitable for plain state transition.
+//!
+//! On importer level, one uses `ImportContext`. This allows the block to be
+//! written into a backend together with auxiliaries. This is suitable for
+//! implementing common consensus algorithms.
+//!
+//! On builder level, one uses `BuildContext`. This allows to be used with
+//! `BuilderExecutor` which is able to create new blocks. Used together with
+//! `ImportContext`, one can build a proposer.
 
 use std::error as stderror;
 use std::hash;
