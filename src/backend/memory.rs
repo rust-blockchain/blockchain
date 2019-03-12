@@ -353,7 +353,6 @@ mod tests {
 		type Block = DummyBlock;
 		type Externalities = dyn CombinedExternalities + 'static;
 		type Auxiliary = ();
-		type BlockExecutor = DummyExecutor;
 	}
 
 	pub struct DummyExecutor;
@@ -372,7 +371,7 @@ mod tests {
 
 	#[test]
 	fn all_traits_for_importer_are_satisfied() {
-		let backend = MemoryBackend::<DummyContext>::with_genesis(
+		let backend = MemoryBackend::with_genesis(
 			DummyBlock {
 				id: 1,
 				parent_id: 0,

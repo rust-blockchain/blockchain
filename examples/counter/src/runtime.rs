@@ -58,7 +58,6 @@ impl BlockContext for Context {
 	type Block = Block;
 	type Externalities = dyn StorageExternalities + 'static;
 	type Auxiliary = ();
-	type BlockExecutor = Executor;
 }
 
 #[derive(Clone, Debug, Encode, Decode)]
@@ -68,7 +67,6 @@ pub enum Extrinsic {
 
 impl ExtrinsicContext for Context {
 	type Extrinsic = Extrinsic;
-	type BuilderExecutor = Executor;
 }
 
 #[derive(Debug)]
