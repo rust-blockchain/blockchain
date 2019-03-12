@@ -28,6 +28,9 @@ pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<C>>::Key;
 pub type AuxiliaryOf<C> = <C as BlockContext>::Auxiliary;
 
 /// Context containing all basic information of block execution.
+///
+/// This is everything needed to build a consensus layer on top, except an
+/// executor.
 pub trait BlockContext {
 	/// Block type
 	type Block: Block;
@@ -38,6 +41,9 @@ pub trait BlockContext {
 }
 
 /// Context allowing block construction via extrinsic.
+///
+/// This is everything needed to build a proposer layer on top, except an
+/// executor.
 pub trait ExtrinsicContext: BlockContext {
 	/// Extrinsic type
 	type Extrinsic;
