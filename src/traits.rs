@@ -35,7 +35,7 @@ pub type BlockOf<C> = <C as ExecuteContext>::Block;
 /// Hash of a context.
 pub type IdentifierOf<C> = <BlockOf<C> as Block>::Identifier;
 /// Auxiliary key of a context.
-pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<C>>::Key;
+pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<BlockOf<C>>>::Key;
 /// Auxiliary of a context.
 pub type AuxiliaryOf<C> = <C as ImportContext>::Auxiliary;
 
@@ -54,11 +54,11 @@ pub trait ExecuteContext {
 /// This is everything needed to build a consensus layer for a block.
 pub trait ImportContext: ExecuteContext {
 	/// Auxiliary type
-	type Auxiliary: Auxiliary<Self>;
+	type Auxiliary: Auxiliary<BlockOf<Self>>;
 }
 
 /// A value where the key is contained in.
-pub trait Auxiliary<C: ?Sized + ExecuteContext>: Clone {
+pub trait Auxiliary<B: Block>: Clone {
 	/// Key type
 	type Key: Copy + Eq + hash::Hash;
 
@@ -68,12 +68,12 @@ pub trait Auxiliary<C: ?Sized + ExecuteContext>: Clone {
 	/// removes any of the blocks listed here, it is expected to remove
 	/// this auxiliary entry, and trigger a recalculation for the
 	/// consensus engine.
-	fn associated(&self) -> Vec<IdentifierOf<C>> {
+	fn associated(&self) -> Vec<B::Identifier> {
 		Vec::new()
 	}
 }
 
-impl<C: ExecuteContext> Auxiliary<C> for () {
+impl<B: Block> Auxiliary<B> for () {
 	type Key = ();
 
 	fn key(&self) -> () { () }
