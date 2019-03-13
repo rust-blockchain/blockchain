@@ -1,8 +1,8 @@
 use primitive_types::H256;
 use blockchain::traits::{
-	Block as BlockT, BlockExecutor, ImportContext, ExecuteContext, BuildContext,
+	Block as BlockT, BlockExecutor, ImportContext, ExecuteContext,
 	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf, ExtrinsicOf,
+	BlockOf,
 };
 use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
@@ -68,10 +68,6 @@ pub enum Extrinsic {
 	Add(u128),
 }
 
-impl BuildContext for Context {
-	type Extrinsic = Extrinsic;
-}
-
 #[derive(Debug)]
 pub enum Error {
 	Backend(Box<std::error::Error>),
@@ -113,8 +109,9 @@ impl Executor {
 	}
 }
 
-impl BlockExecutor<Context> for Executor {
+impl BlockExecutor for Executor {
 	type Error = Error;
+	type Context = Context;
 
 	fn execute_block(
 		&self,
@@ -139,8 +136,10 @@ impl BlockExecutor<Context> for Executor {
 	}
 }
 
-impl BuilderExecutor<Context> for Executor {
+impl BuilderExecutor for Executor {
 	type Error = Error;
+	type Context = Context;
+	type Extrinsic = Extrinsic;
 
 	fn initialize_block(
 		&self,
@@ -156,7 +155,7 @@ impl BuilderExecutor<Context> for Executor {
 	fn apply_extrinsic(
 		&self,
 		block: &mut BlockOf<Context>,
-		extrinsic: ExtrinsicOf<Context>,
+		extrinsic: Self::Extrinsic,
 		state: &mut ExternalitiesOf<Context>,
 	) -> Result<(), Self::Error> {
 		let mut counter = self.read_counter(state)?;

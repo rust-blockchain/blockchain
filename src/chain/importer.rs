@@ -108,10 +108,10 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	}
 
 	/// Begin an import operation, returns an importer.
-	pub fn begin_import<'a, 'executor, E: BlockExecutor<C>>(
+	pub fn begin_import<'a, 'executor, E: BlockExecutor<Context=C>>(
 		&'a self,
 		executor: &'executor E
-	) -> Importer<'a, 'executor, C, B, E> {
+	) -> Importer<'a, 'executor, E, B> {
 		Importer {
 			executor,
 			backend: self,
@@ -132,24 +132,26 @@ impl<C: ImportContext, B: Backend<C>> Clone for SharedBackend<C, B> {
 }
 
 /// Block importer.
-pub struct Importer<'a, 'executor, C: ImportContext, B: Backend<C>, E> {
+pub struct Importer<'a, 'executor, E: BlockExecutor, B: Backend<E::Context>> where
+	E::Context: ImportContext,
+{
 	executor: &'executor E,
-	backend: &'a SharedBackend<C, B>,
-	pending: Operation<C, B>,
+	backend: &'a SharedBackend<E::Context, B>,
+	pending: Operation<E::Context, B>,
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, C: ImportContext, B, E> Importer<'a, 'executor, C, B, E> where
-	B: Backend<C, Operation=Operation<C, B>>,
-	E: BlockExecutor<C>,
+impl<'a, 'executor, E: BlockExecutor, B> Importer<'a, 'executor, E, B> where
+	B: Backend<E::Context, Operation=Operation<E::Context, B>>,
+	E::Context: ImportContext,
 {
 	/// Get the associated backend of the importer.
-	pub fn backend(&self) -> &'a SharedBackend<C, B> {
+	pub fn backend(&self) -> &'a SharedBackend<E::Context, B> {
 		self.backend
 	}
 
 	/// Import a new block.
-	pub fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Error> {
+	pub fn import_block(&mut self, block: BlockOf<E::Context>) -> Result<(), Error> {
 		let mut state = self.backend
 			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
@@ -163,22 +165,22 @@ impl<'a, 'executor, C: ImportContext, B, E> Importer<'a, 'executor, C, B, E> whe
 	}
 
 	/// Import a raw block.
-	pub fn import_raw(&mut self, operation: ImportOperation<C, B>) {
+	pub fn import_raw(&mut self, operation: ImportOperation<E::Context, B>) {
 		self.pending.import_block.push(operation);
 	}
 
 	/// Set head to given hash.
-	pub fn set_head(&mut self, head: IdentifierOf<C>) {
+	pub fn set_head(&mut self, head: IdentifierOf<E::Context>) {
 		self.pending.set_head = Some(head);
 	}
 
 	/// Insert auxiliary value.
-	pub fn insert_auxiliary(&mut self, aux: AuxiliaryOf<C>) {
+	pub fn insert_auxiliary(&mut self, aux: AuxiliaryOf<E::Context>) {
 		self.pending.insert_auxiliaries.push(aux);
 	}
 
 	/// Remove auxiliary value.
-	pub fn remove_auxiliary(&mut self, aux_key: AuxiliaryKeyOf<C>) {
+	pub fn remove_auxiliary(&mut self, aux_key: AuxiliaryKeyOf<E::Context>) {
 		self.pending.remove_auxiliaries.push(aux_key);
 	}
 

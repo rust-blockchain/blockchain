@@ -360,8 +360,9 @@ mod tests {
 
 	pub struct DummyExecutor;
 
-	impl BlockExecutor<DummyContext> for DummyExecutor {
+	impl BlockExecutor for DummyExecutor {
 		type Error = Error;
+		type Context = DummyContext;
 
 		fn execute_block(
 			&self,

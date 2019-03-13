@@ -34,8 +34,6 @@ pub type ExternalitiesOf<C> = <C as ExecuteContext>::Externalities;
 pub type BlockOf<C> = <C as ExecuteContext>::Block;
 /// Hash of a context.
 pub type IdentifierOf<C> = <BlockOf<C> as Block>::Identifier;
-/// Extrinsic of a context.
-pub type ExtrinsicOf<C> = <C as BuildContext>::Extrinsic;
 /// Auxiliary key of a context.
 pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<C>>::Key;
 /// Auxiliary of a context.
@@ -57,15 +55,6 @@ pub trait ExecuteContext {
 pub trait ImportContext: ExecuteContext {
 	/// Auxiliary type
 	type Auxiliary: Auxiliary<Self>;
-}
-
-/// Context allowing block construction via extrinsic.
-///
-/// This is everything needed to build a proposer layer on top, except an
-/// executor.
-pub trait BuildContext: ExecuteContext {
-	/// Extrinsic type
-	type Extrinsic;
 }
 
 /// A value where the key is contained in.
@@ -188,42 +177,48 @@ pub trait ImportBlock<C: ImportContext> {
 }
 
 /// Block executor
-pub trait BlockExecutor<C: ExecuteContext>: Sized {
+pub trait BlockExecutor: Sized {
 	/// Error type
 	type Error: stderror::Error + 'static;
+	/// Context
+	type Context: ExecuteContext;
 
 	/// Execute the block via a block object and given state.
 	fn execute_block(
 		&self,
-		block: &BlockOf<C>,
-		state: &mut ExternalitiesOf<C>
+		block: &BlockOf<Self::Context>,
+		state: &mut ExternalitiesOf<Self::Context>
 	) -> Result<(), Self::Error>;
 }
 
 /// Builder executor
-pub trait BuilderExecutor<C: BuildContext>: Sized {
+pub trait BuilderExecutor: Sized {
 	/// Error type
 	type Error: stderror::Error + 'static;
+	/// Context
+	type Context: ExecuteContext;
+	/// Extrinsic
+	type Extrinsic;
 
 	/// Initialize a block from the parent block, and given state.
 	fn initialize_block(
 		&self,
-		block: &mut BlockOf<C>,
-		state: &mut ExternalitiesOf<C>,
+		block: &mut BlockOf<Self::Context>,
+		state: &mut ExternalitiesOf<Self::Context>,
 	) -> Result<(), Self::Error>;
 
 	/// Apply extrinsic to a given block.
 	fn apply_extrinsic(
 		&self,
-		block: &mut BlockOf<C>,
-		extrinsic: ExtrinsicOf<C>,
-		state: &mut ExternalitiesOf<C>,
+		block: &mut BlockOf<Self::Context>,
+		extrinsic: Self::Extrinsic,
+		state: &mut ExternalitiesOf<Self::Context>,
 	) -> Result<(), Self::Error>;
 
 	/// Finalize a block.
 	fn finalize_block(
 		&self,
-		block: &mut BlockOf<C>,
-		state: &mut ExternalitiesOf<C>,
+		block: &mut BlockOf<Self::Context>,
+		state: &mut ExternalitiesOf<Self::Context>,
 	) -> Result<(), Self::Error>;
 }
