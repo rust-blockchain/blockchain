@@ -70,7 +70,7 @@ pub trait StorageExternalities {
 }
 
 /// Import operation.
-pub struct ImportOperation<B: Block, S> {
+pub struct ImportOperation<B, S> {
 	/// Block to be imported.
 	pub block: B,
 	/// Associated state of the block.
@@ -199,6 +199,8 @@ pub trait BuilderExecutor {
 	type Error: stderror::Error + 'static;
 	/// Block type
 	type Block: Block;
+	/// Build block type
+	type BuildBlock;
 	/// Externalities type
 	type Externalities: ?Sized;
 	/// Inherent
@@ -209,15 +211,15 @@ pub trait BuilderExecutor {
 	/// Initialize a block from the parent block, and given state.
 	fn initialize_block(
 		&self,
-		block: &mut Self::Block,
+		parent_block: &Self::Block,
 		state: &mut Self::Externalities,
 		inherent: Self::Inherent,
-	) -> Result<(), Self::Error>;
+	) -> Result<Self::BuildBlock, Self::Error>;
 
 	/// Apply extrinsic to a given block.
 	fn apply_extrinsic(
 		&self,
-		block: &mut Self::Block,
+		block: &mut Self::BuildBlock,
 		extrinsic: Self::Extrinsic,
 		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error>;
@@ -225,7 +227,7 @@ pub trait BuilderExecutor {
 	/// Finalize a block.
 	fn finalize_block(
 		&self,
-		block: &mut Self::Block,
+		block: &mut Self::BuildBlock,
 		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error>;
 }

@@ -128,20 +128,22 @@ impl BlockExecutor for Executor {
 impl BuilderExecutor for Executor {
 	type Error = Error;
 	type Block = Block;
+	type BuildBlock = Block;
 	type Externalities = dyn StorageExternalities + 'static;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();
 
 	fn initialize_block(
 		&self,
-		block: &mut Self::Block,
+		block: &Self::Block,
 		_state: &mut Self::Externalities,
 		_inherent: (),
-	) -> Result<(), Self::Error> {
+	) -> Result<Self::BuildBlock, Self::Error> {
+		let mut block = block.clone();
 		block.parent_hash = Some(block.hash);
 		block.fix_hash();
 
-		Ok(())
+		Ok(block)
 	}
 
 	fn apply_extrinsic(
