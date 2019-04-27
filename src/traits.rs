@@ -197,6 +197,8 @@ pub trait BuilderExecutor: Sized {
 	type Error: stderror::Error + 'static;
 	/// Context
 	type Context: ExecuteContext;
+	/// Inherent
+	type Inherent;
 	/// Extrinsic
 	type Extrinsic;
 
@@ -205,6 +207,7 @@ pub trait BuilderExecutor: Sized {
 		&self,
 		block: &mut BlockOf<Self::Context>,
 		state: &mut ExternalitiesOf<Self::Context>,
+		inherent: Self::Inherent,
 	) -> Result<(), Self::Error>;
 
 	/// Apply extrinsic to a given block.

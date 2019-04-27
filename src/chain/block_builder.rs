@@ -20,14 +20,14 @@ impl<'a, E: BuilderExecutor, B> BlockBuilder<'a, E, B> where
 	E::Context: ImportContext,
 {
 	/// Create a new block builder.
-	pub fn new(backend: &SharedBackend<E::Context, B>, executor: &'a E, parent_hash: &IdentifierOf<E::Context>) -> Result<Self, Error> {
+	pub fn new(backend: &SharedBackend<E::Context, B>, executor: &'a E, parent_hash: &IdentifierOf<E::Context>, inherent: E::Inherent) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 
 		let mut pending_state = backend.state_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 
-		executor.initialize_block(&mut pending_block, pending_state.as_externalities())
+		executor.initialize_block(&mut pending_block, pending_state.as_externalities(), inherent)
 			.map_err(|e| Error::Executor(Box::new(e)))?;
 
 		Ok(Self {

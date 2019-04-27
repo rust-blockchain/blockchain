@@ -140,11 +140,13 @@ impl BuilderExecutor for Executor {
 	type Error = Error;
 	type Context = Context;
 	type Extrinsic = Extrinsic;
+	type Inherent = ();
 
 	fn initialize_block(
 		&self,
 		block: &mut BlockOf<Context>,
 		_state: &mut ExternalitiesOf<Context>,
+		_inherent: (),
 	) -> Result<(), Self::Error> {
 		block.parent_hash = Some(block.hash);
 		block.fix_hash();

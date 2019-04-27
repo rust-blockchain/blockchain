@@ -225,7 +225,7 @@ fn builder_thread(backend_build: SharedBackend<Context, MemoryBackend<Context>>,
 		println!("Building on top of {}", head);
 
 		// Build a block.
-		let mut builder = BlockBuilder::new(&backend_build, &executor, &head).unwrap();
+		let mut builder = BlockBuilder::new(&backend_build, &executor, &head, ()).unwrap();
 		let pending_transactions = {
 			let mut locked = pending_transactions.lock().unwrap();
 			let ret = locked.clone();
