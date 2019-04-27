@@ -2,11 +2,10 @@ use std::collections::HashMap;
 use std::{fmt, error as stderror};
 
 use crate::traits::{
-	IdentifierOf, BlockOf, ExternalitiesOf, AsExternalities, ImportContext, Backend,
-	NullExternalities, StorageExternalities, Block,
-	AuxiliaryKeyOf, AuxiliaryOf, Auxiliary,
+	AsExternalities, Backend, NullExternalities,
+	StorageExternalities, Block, Auxiliary, Operation,
 };
-use super::{Operation, tree_route};
+use super::tree_route;
 
 #[derive(Debug)]
 pub enum Error {
@@ -65,48 +64,45 @@ impl AsExternalities<dyn StorageExternalities> for MemoryState {
 	}
 }
 
-struct BlockData<C: ImportContext> {
-	block: BlockOf<C>,
+struct BlockData<B: Block> {
+	block: B,
 	state: MemoryState,
 	depth: usize,
-	children: Vec<IdentifierOf<C>>,
+	children: Vec<B::Identifier>,
 	is_canon: bool,
 }
 
 /// Memory backend.
-pub struct MemoryBackend<C: ImportContext> {
-	blocks_and_states: HashMap<IdentifierOf<C>, BlockData<C>>,
-	head: IdentifierOf<C>,
-	genesis: IdentifierOf<C>,
-	canon_depth_mappings: HashMap<usize, IdentifierOf<C>>,
-	auxiliaries: HashMap<AuxiliaryKeyOf<C>, AuxiliaryOf<C>>,
+pub struct MemoryBackend<B: Block, A: Auxiliary<B>> {
+	blocks_and_states: HashMap<B::Identifier, BlockData<B>>,
+	head: B::Identifier,
+	genesis: B::Identifier,
+	canon_depth_mappings: HashMap<usize, B::Identifier>,
+	auxiliaries: HashMap<A::Key, A>,
 }
 
-impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
-	MemoryState: AsExternalities<ExternalitiesOf<C>>
-{
+impl<B: Block, A: Auxiliary<B>> Backend<B, A> for MemoryBackend<B, A> {
 	type State = MemoryState;
-	type Operation = Operation<C, Self>;
 	type Error = Error;
 
-	fn head(&self) -> IdentifierOf<C> {
+	fn head(&self) -> B::Identifier {
 		self.head
 	}
 
-	fn genesis(&self) -> IdentifierOf<C> {
+	fn genesis(&self) -> B::Identifier {
 		self.genesis
 	}
 
 	fn contains(
 		&self,
-		id: &IdentifierOf<C>
+		id: &B::Identifier
 	) -> Result<bool, Error> {
 		Ok(self.blocks_and_states.contains_key(id))
 	}
 
 	fn is_canon(
 		&self,
-		id: &IdentifierOf<C>
+		id: &B::Identifier
 	) -> Result<bool, Error> {
 		self.blocks_and_states.get(id)
 			.map(|data| data.is_canon)
@@ -116,22 +112,22 @@ impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<IdentifierOf<C>>, Error> {
+	) -> Result<Option<B::Identifier>, Error> {
 		Ok(self.canon_depth_mappings.get(&depth)
 		   .map(|h| h.clone()))
 	}
 
 	fn auxiliary(
 		&self,
-		key: &AuxiliaryKeyOf<C>
-	) -> Result<Option<AuxiliaryOf<C>>, Error> {
+		key: &A::Key
+	) -> Result<Option<A>, Error> {
 		Ok(self.auxiliaries.get(key).map(|v| v.clone()))
 	}
 
 	fn children_at(
 		&self,
-		id: &IdentifierOf<C>,
-	) -> Result<Vec<IdentifierOf<C>>, Error> {
+		id: &B::Identifier,
+	) -> Result<Vec<B::Identifier>, Error> {
 		self.blocks_and_states.get(id)
 			.map(|data| data.children.clone())
 			.ok_or(Error::NotExist)
@@ -139,7 +135,7 @@ impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 
 	fn depth_at(
 		&self,
-		id: &IdentifierOf<C>
+		id: &B::Identifier
 	) -> Result<usize, Error> {
 		self.blocks_and_states.get(id)
 		   .map(|data| data.depth)
@@ -148,8 +144,8 @@ impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 
 	fn block_at(
 		&self,
-		id: &IdentifierOf<C>,
-	) -> Result<BlockOf<C>, Error> {
+		id: &B::Identifier,
+	) -> Result<B, Error> {
 		self.blocks_and_states.get(id)
 			.map(|data| data.block.clone())
 			.ok_or(Error::NotExist)
@@ -157,7 +153,7 @@ impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 
 	fn state_at(
 		&self,
-		id: &IdentifierOf<C>,
+		id: &B::Identifier,
 	) -> Result<MemoryState, Error> {
 		self.blocks_and_states.get(id)
 			.map(|data| data.state.clone())
@@ -166,10 +162,10 @@ impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 
 	fn commit(
 		&mut self,
-		operation: Operation<C, Self>,
+		operation: Operation<B, Self::State, A>,
 	) -> Result<(), Error> {
 		let mut parent_ides = HashMap::new();
-		let mut importing: HashMap<IdentifierOf<C>, BlockData<C>> = HashMap::new();
+		let mut importing: HashMap<B::Identifier, BlockData<B>> = HashMap::new();
 		let mut verifying = operation.import_block;
 
 		// Do precheck to make sure the import operation is valid.
@@ -282,11 +278,9 @@ impl<C: ImportContext> Backend<C> for MemoryBackend<C> where
 	}
 }
 
-impl<C: ImportContext> MemoryBackend<C> where
-	MemoryState: AsExternalities<ExternalitiesOf<C>>
-{
+impl<B: Block, A: Auxiliary<B>> MemoryBackend<B, A> {
 	/// Create a new memory backend from a genesis block.
-	pub fn with_genesis(block: BlockOf<C>, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+	pub fn with_genesis(block: B, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
 		assert!(block.parent_id().is_none(), "with_genesis must be provided with a genesis block");
 
 		let genesis_id = block.id();
@@ -346,23 +340,12 @@ mod tests {
 		}
 	}
 
-	#[allow(dead_code)]
-	pub struct DummyContext;
-
-	impl ExecuteContext for DummyContext {
-		type Block = DummyBlock;
-		type Externalities = dyn CombinedExternalities + 'static;
-	}
-
-	impl ImportContext for DummyContext {
-		type Auxiliary = ();
-	}
-
 	pub struct DummyExecutor;
 
 	impl BlockExecutor for DummyExecutor {
 		type Error = Error;
-		type Context = DummyContext;
+		type Block = DummyBlock;
+		type Externalities = dyn CombinedExternalities + 'static;
 
 		fn execute_block(
 			&self,
@@ -375,7 +358,7 @@ mod tests {
 
 	#[test]
 	fn all_traits_for_importer_are_satisfied() {
-		let backend = MemoryBackend::with_genesis(
+		let backend = MemoryBackend::<_, ()>::with_genesis(
 			DummyBlock {
 				id: 1,
 				parent_id: 0,

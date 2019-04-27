@@ -1,8 +1,7 @@
 use primitive_types::H256;
 use blockchain::traits::{
-	Block as BlockT, BlockExecutor, ImportContext, ExecuteContext,
-	BuilderExecutor, StorageExternalities, ExternalitiesOf,
-	BlockOf,
+	Block as BlockT, BlockExecutor,
+	BuilderExecutor, StorageExternalities,
 };
 use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
@@ -52,17 +51,6 @@ impl BlockT for Block {
 	}
 }
 
-pub struct Context;
-
-impl ExecuteContext for Context {
-	type Block = Block;
-	type Externalities = dyn StorageExternalities + 'static;
-}
-
-impl ImportContext for Context {
-	type Auxiliary = ();
-}
-
 #[derive(Clone, Debug, Encode, Decode)]
 pub enum Extrinsic {
 	Add(u128),
@@ -93,7 +81,7 @@ impl std::error::Error for Error { }
 pub struct Executor;
 
 impl Executor {
-	fn read_counter(&self, state: &mut ExternalitiesOf<Context>) -> Result<u128, Error> {
+	fn read_counter(&self, state: &mut <Self as BlockExecutor>::Externalities) -> Result<u128, Error> {
 		Ok(
 			match state.read_storage(b"counter").map_err(|e| Error::Backend(e))? {
 				Some(counter) => {
@@ -104,19 +92,20 @@ impl Executor {
 		)
 	}
 
-	fn write_counter(&self, counter: u128, state: &mut ExternalitiesOf<Context>) {
+	fn write_counter(&self, counter: u128, state: &mut <Self as BlockExecutor>::Externalities) {
 		state.write_storage(b"counter".to_vec(), counter.encode());
 	}
 }
 
 impl BlockExecutor for Executor {
 	type Error = Error;
-	type Context = Context;
+	type Block = Block;
+	type Externalities = dyn StorageExternalities + 'static;
 
 	fn execute_block(
 		&self,
-		block: &Block,
-		state: &mut ExternalitiesOf<Context>,
+		block: &Self::Block,
+		state: &mut Self::Externalities,
 	) -> Result<(), Error> {
 		if !block.verify_hash() {
 			return Err(Error::HashMismatch);
@@ -138,14 +127,15 @@ impl BlockExecutor for Executor {
 
 impl BuilderExecutor for Executor {
 	type Error = Error;
-	type Context = Context;
+	type Block = Block;
+	type Externalities = dyn StorageExternalities + 'static;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();
 
 	fn initialize_block(
 		&self,
-		block: &mut BlockOf<Context>,
-		_state: &mut ExternalitiesOf<Context>,
+		block: &mut Self::Block,
+		_state: &mut Self::Externalities,
 		_inherent: (),
 	) -> Result<(), Self::Error> {
 		block.parent_hash = Some(block.hash);
@@ -156,9 +146,9 @@ impl BuilderExecutor for Executor {
 
 	fn apply_extrinsic(
 		&self,
-		block: &mut BlockOf<Context>,
+		block: &mut Self::Block,
 		extrinsic: Self::Extrinsic,
-		state: &mut ExternalitiesOf<Context>,
+		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error> {
 		let mut counter = self.read_counter(state)?;
 
@@ -176,8 +166,8 @@ impl BuilderExecutor for Executor {
 
 	fn finalize_block(
 		&self,
-		block: &mut BlockOf<Context>,
-		_state: &mut ExternalitiesOf<Context>,
+		block: &mut Self::Block,
+		_state: &mut Self::Externalities,
 	) -> Result<(), Self::Error> {
 		block.fix_hash();
 

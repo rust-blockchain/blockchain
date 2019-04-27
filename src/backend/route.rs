@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{ExecuteContext, ImportContext, IdentifierOf, Backend, Block};
+use crate::traits::{Backend, Block, Auxiliary};
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -41,37 +41,37 @@ use crate::traits::{ExecuteContext, ImportContext, IdentifierOf, Backend, Block}
 /// Tree route from C to E2. Retracted empty. Common is C, enacted [E1, E2]
 /// C -> E1 -> E2
 /// ```
-pub struct TreeRoute<C: ExecuteContext> {
-	route: Vec<IdentifierOf<C>>,
+pub struct TreeRoute<B: Block> {
+	route: Vec<B::Identifier>,
 	pivot: usize,
 }
 
-impl<C: ExecuteContext> TreeRoute<C> {
+impl<B: Block> TreeRoute<B> {
 	/// Get a slice of all retracted blocks in reverse order (towards common ancestor)
-	pub fn retracted(&self) -> &[IdentifierOf<C>] {
+	pub fn retracted(&self) -> &[B::Identifier] {
 		&self.route[..self.pivot]
 	}
 
 	/// Get the common ancestor block. This might be one of the two blocks of the
 	/// route.
-	pub fn common_block(&self) -> &IdentifierOf<C> {
+	pub fn common_block(&self) -> &B::Identifier {
 		self.route.get(self.pivot).expect("tree-routes are computed between blocks; \
 			which are included in the route; \
 			thus it is never empty; qed")
 	}
 
 	/// Get a slice of enacted blocks (descendents of the common ancestor)
-	pub fn enacted(&self) -> &[IdentifierOf<C>] {
+	pub fn enacted(&self) -> &[B::Identifier] {
 		&self.route[self.pivot + 1 ..]
 	}
 }
 
 /// Compute a tree-route between two blocks. See tree-route docs for more details.
-pub fn tree_route<C: ImportContext, B: Backend<C>>(
-	backend: &B,
-	from_id: &IdentifierOf<C>,
-	to_id: &IdentifierOf<C>
-) -> Result<TreeRoute<C>, B::Error> {
+pub fn tree_route<B: Block, A: Auxiliary<B>, Ba: Backend<B, A>>(
+	backend: &Ba,
+	from_id: &B::Identifier,
+	to_id: &B::Identifier,
+) -> Result<TreeRoute<B>, Ba::Error> {
 	let mut from = backend.block_at(from_id)?;
 	let mut to = backend.block_at(to_id)?;
 

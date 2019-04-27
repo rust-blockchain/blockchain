@@ -28,35 +28,6 @@ pub trait Block: Clone {
 	fn parent_id(&self) -> Option<Self::Identifier>;
 }
 
-/// Externalities of a context.
-pub type ExternalitiesOf<C> = <C as ExecuteContext>::Externalities;
-/// Block of a context.
-pub type BlockOf<C> = <C as ExecuteContext>::Block;
-/// Hash of a context.
-pub type IdentifierOf<C> = <BlockOf<C> as Block>::Identifier;
-/// Auxiliary key of a context.
-pub type AuxiliaryKeyOf<C> = <AuxiliaryOf<C> as Auxiliary<BlockOf<C>>>::Key;
-/// Auxiliary of a context.
-pub type AuxiliaryOf<C> = <C as ImportContext>::Auxiliary;
-
-/// Context containing all basic information of block execution.
-///
-/// This is everything needed to build an execution layer for a block.
-pub trait ExecuteContext {
-	/// Block type
-	type Block: Block;
-	/// Externalities type
-	type Externalities: ?Sized;
-}
-
-/// Context containing importer information.
-///
-/// This is everything needed to build a consensus layer for a block.
-pub trait ImportContext: ExecuteContext {
-	/// Auxiliary type
-	type Auxiliary: Auxiliary<BlockOf<Self>>;
-}
-
 /// A value where the key is contained in.
 pub trait Auxiliary<B: Block>: Clone {
 	/// Key type
@@ -98,105 +69,138 @@ pub trait StorageExternalities {
 	fn remove_storage(&mut self, key: &[u8]);
 }
 
+/// Import operation.
+pub struct ImportOperation<B: Block, S> {
+	/// Block to be imported.
+	pub block: B,
+	/// Associated state of the block.
+	pub state: S,
+}
+
+/// Operation for a backend.
+pub struct Operation<B: Block, S, A: Auxiliary<B>> {
+	/// Import operation.
+	pub import_block: Vec<ImportOperation<B, S>>,
+	/// Set head operation.
+	pub set_head: Option<B::Identifier>,
+	/// Auxiliaries insertion operation.
+	pub insert_auxiliaries: Vec<A>,
+	/// Auxiliaries removal operation.
+	pub remove_auxiliaries: Vec<A::Key>,
+}
+
+impl<B: Block, S, A: Auxiliary<B>> Default for Operation<B, S, A> {
+	fn default() -> Self {
+		Self {
+			import_block: Vec::new(),
+			set_head: None,
+			insert_auxiliaries: Vec::new(),
+			remove_auxiliaries: Vec::new(),
+		}
+	}
+}
+
 /// Backend for a block context.
-pub trait Backend<C: ImportContext>: Sized {
+pub trait Backend<B: Block, A: Auxiliary<B>>: Sized {
 	/// State type
-	type State: AsExternalities<ExternalitiesOf<C>>;
-	/// Operation type
-	type Operation;
+	type State;
 	/// Error type
 	type Error: stderror::Error + 'static;
 
 	/// Get the genesis hash of the chain.
-	fn genesis(&self) -> IdentifierOf<C>;
+	fn genesis(&self) -> B::Identifier;
 	/// Get the head of the chain.
-	fn head(&self) -> IdentifierOf<C>;
+	fn head(&self) -> B::Identifier;
 
 	/// Check whether a hash is contained in the chain.
 	fn contains(
 		&self,
-		hash: &IdentifierOf<C>,
+		hash: &B::Identifier,
 	) -> Result<bool, Self::Error>;
 
 	/// Check whether a block is canonical.
 	fn is_canon(
 		&self,
-		hash: &IdentifierOf<C>,
+		hash: &B::Identifier,
 	) -> Result<bool, Self::Error>;
 
 	/// Look up a canonical block via its depth.
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<IdentifierOf<C>>, Self::Error>;
+	) -> Result<Option<B::Identifier>, Self::Error>;
 
 	/// Get the auxiliary value by key.
 	fn auxiliary(
 		&self,
-		key: &AuxiliaryKeyOf<C>,
-	) -> Result<Option<AuxiliaryOf<C>>, Self::Error>;
+		key: &A::Key,
+	) -> Result<Option<A>, Self::Error>;
 
 	/// Get the depth of a block.
 	fn depth_at(
 		&self,
-		hash: &IdentifierOf<C>,
+		hash: &B::Identifier,
 	) -> Result<usize, Self::Error>;
 
 	/// Get children of a block.
 	fn children_at(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<Vec<IdentifierOf<C>>, Self::Error>;
+		hash: &B::Identifier,
+	) -> Result<Vec<B::Identifier>, Self::Error>;
 
 	/// Get the state object of a block.
 	fn state_at(
 		&self,
-		hash: &IdentifierOf<C>,
+		hash: &B::Identifier,
 	) -> Result<Self::State, Self::Error>;
 
 	/// Get the object of a block.
 	fn block_at(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<BlockOf<C>, Self::Error>;
+		hash: &B::Identifier,
+	) -> Result<B, Self::Error>;
 
 	/// Commit operation.
 	fn commit(
 		&mut self,
-		operation: Self::Operation,
+		operation: Operation<B, Self::State, A>,
 	) -> Result<(), Self::Error>;
 }
 
 /// Trait used for committing block, usually built on top of a backend.
-pub trait ImportBlock<C: ImportContext> {
+pub trait ImportBlock<B: Block> {
 	/// Error type
 	type Error: stderror::Error + 'static;
 
 	/// Commit a block into the backend, and handle consensus and auxiliary.
-	fn import_block(&mut self, block: BlockOf<C>) -> Result<(), Self::Error>;
+	fn import_block(&mut self, block: B) -> Result<(), Self::Error>;
 }
 
 /// Block executor
-pub trait BlockExecutor: Sized {
+pub trait BlockExecutor {
 	/// Error type
 	type Error: stderror::Error + 'static;
-	/// Context
-	type Context: ExecuteContext;
+	/// Block type
+	type Block: Block;
+	/// Externalities type
+	type Externalities: ?Sized;
 
 	/// Execute the block via a block object and given state.
 	fn execute_block(
 		&self,
-		block: &BlockOf<Self::Context>,
-		state: &mut ExternalitiesOf<Self::Context>
+		block: &Self::Block,
+		state: &mut Self::Externalities
 	) -> Result<(), Self::Error>;
 }
 
 /// Builder executor
-pub trait BuilderExecutor: Sized {
+pub trait BuilderExecutor {
 	/// Error type
 	type Error: stderror::Error + 'static;
-	/// Context
-	type Context: ExecuteContext;
+	/// Block type
+	type Block: Block;
+	/// Externalities type
+	type Externalities: ?Sized;
 	/// Inherent
 	type Inherent;
 	/// Extrinsic
@@ -205,23 +209,23 @@ pub trait BuilderExecutor: Sized {
 	/// Initialize a block from the parent block, and given state.
 	fn initialize_block(
 		&self,
-		block: &mut BlockOf<Self::Context>,
-		state: &mut ExternalitiesOf<Self::Context>,
+		block: &mut Self::Block,
+		state: &mut Self::Externalities,
 		inherent: Self::Inherent,
 	) -> Result<(), Self::Error>;
 
 	/// Apply extrinsic to a given block.
 	fn apply_extrinsic(
 		&self,
-		block: &mut BlockOf<Self::Context>,
+		block: &mut Self::Block,
 		extrinsic: Self::Extrinsic,
-		state: &mut ExternalitiesOf<Self::Context>,
+		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error>;
 
 	/// Finalize a block.
 	fn finalize_block(
 		&self,
-		block: &mut BlockOf<Self::Context>,
-		state: &mut ExternalitiesOf<Self::Context>,
+		block: &mut Self::Block,
+		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error>;
 }

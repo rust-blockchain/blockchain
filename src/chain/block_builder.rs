@@ -1,26 +1,21 @@
 use super::{Error, SharedBackend};
-use crate::backend::{Operation, ImportOperation};
 use crate::traits::{
-	Backend, BuilderExecutor,
-	BlockOf, IdentifierOf, AsExternalities,
-	ImportContext,
+	Backend, BuilderExecutor, AsExternalities,
+	ImportOperation, Block, Auxiliary,
 };
 
 /// Block builder.
-pub struct BlockBuilder<'a, E: BuilderExecutor, B: Backend<E::Context>> where
-	E::Context: ImportContext
-{
+pub struct BlockBuilder<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> {
 	executor: &'a E,
-	pending_block: BlockOf<E::Context>,
-	pending_state: B::State,
+	pending_block: E::Block,
+	pending_state: Ba::State,
 }
 
-impl<'a, E: BuilderExecutor, B> BlockBuilder<'a, E, B> where
-	B: Backend<E::Context, Operation=Operation<E::Context, B>>,
-	E::Context: ImportContext,
+impl<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> BlockBuilder<'a, E, A, Ba> where
+	Ba::State: AsExternalities<E::Externalities>,
 {
 	/// Create a new block builder.
-	pub fn new(backend: &SharedBackend<E::Context, B>, executor: &'a E, parent_hash: &IdentifierOf<E::Context>, inherent: E::Inherent) -> Result<Self, Error> {
+	pub fn new(backend: &SharedBackend<E::Block, A, Ba>, executor: &'a E, parent_hash: &<E::Block as Block>::Identifier, inherent: E::Inherent) -> Result<Self, Error> {
 		let mut pending_block = backend.block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 
@@ -45,7 +40,7 @@ impl<'a, E: BuilderExecutor, B> BlockBuilder<'a, E, B> where
 	}
 
 	/// Finalize the block.
-	pub fn finalize(mut self) -> Result<ImportOperation<E::Context, B>, Error> {
+	pub fn finalize(mut self) -> Result<ImportOperation<E::Block, Ba::State>, Error> {
 		self.executor.finalize_block(
 			&mut self.pending_block,
 			self.pending_state.as_externalities()

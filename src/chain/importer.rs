@@ -1,21 +1,20 @@
 use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use std::marker::PhantomData;
 use super::Error;
-use crate::backend::{Operation, ImportOperation};
-use crate::traits::{IdentifierOf, BlockOf, Block, BlockExecutor, Backend, AsExternalities, ImportContext, AuxiliaryOf, AuxiliaryKeyOf};
+use crate::traits::{Operation, ImportOperation, Block, BlockExecutor, Backend, AsExternalities, Auxiliary};
 
 /// A shared backend that also allows atomic import operation.
-pub struct SharedBackend<C: ImportContext, B: Backend<C>> {
-	backend: Arc<RwLock<B>>,
+pub struct SharedBackend<B: Block, A: Auxiliary<B>, Ba: Backend<B, A>> {
+	backend: Arc<RwLock<Ba>>,
 	import_lock: Arc<Mutex<()>>,
-	_marker: PhantomData<C>,
+	_marker: PhantomData<(B, A)>,
 }
 
-impl<C: ImportContext, B> SharedBackend<C, B> where
-	B: Backend<C, Operation=Operation<C, B>>
+impl<B: Block, A: Auxiliary<B>, Ba> SharedBackend<B, A, Ba> where
+	Ba: Backend<B, A>
 {
 	/// Create a new shared backend.
-	pub fn new(backend: B) -> Self {
+	pub fn new(backend: Ba) -> Self {
 		Self {
 			backend: Arc::new(RwLock::new(backend)),
 			import_lock: Arc::new(Mutex::new(())),
@@ -24,13 +23,13 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	}
 
 	/// Get the genesis hash of the chain.
-	pub fn genesis(&self) -> IdentifierOf<C> {
+	pub fn genesis(&self) -> B::Identifier {
 		self.backend.read().expect("backend lock is poisoned")
 			.genesis()
 	}
 
 	/// Get the head of the chain.
-	pub fn head(&self) -> IdentifierOf<C> {
+	pub fn head(&self) -> B::Identifier {
 		self.backend.read().expect("backend lock is poisoned")
 			.head()
 	}
@@ -38,8 +37,8 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Check whether a hash is contained in the chain.
 	pub fn contains(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<bool, B::Error> {
+		hash: &B::Identifier,
+	) -> Result<bool, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.contains(hash)
 	}
@@ -47,8 +46,8 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Check whether a block is canonical.
 	pub fn is_canon(
 		&self,
-		hash: &IdentifierOf<C>
-	) -> Result<bool, B::Error> {
+		hash: &B::Identifier
+	) -> Result<bool, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.is_canon(hash)
 	}
@@ -57,7 +56,7 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	pub fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<IdentifierOf<C>>, B::Error> {
+	) -> Result<Option<B::Identifier>, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.lookup_canon_depth(depth)
 	}
@@ -65,8 +64,8 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Get the auxiliary value by key.
 	pub fn auxiliary(
 		&self,
-		key: &AuxiliaryKeyOf<C>
-	) -> Result<Option<AuxiliaryOf<C>>, B::Error> {
+		key: &A::Key
+	) -> Result<Option<A>, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.auxiliary(key)
 	}
@@ -74,8 +73,8 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Get the depth of a block.
 	pub fn depth_at(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<usize, B::Error> {
+		hash: &B::Identifier,
+	) -> Result<usize, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.depth_at(hash)
 	}
@@ -83,8 +82,8 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Get children of a block.
 	pub fn children_at(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<Vec<IdentifierOf<C>>, B::Error> {
+		hash: &B::Identifier,
+	) -> Result<Vec<B::Identifier>, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.children_at(hash)
 	}
@@ -92,8 +91,8 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Get the state object of a block.
 	pub fn state_at(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<B::State, B::Error> {
+		hash: &B::Identifier,
+	) -> Result<Ba::State, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.state_at(hash)
 	}
@@ -101,17 +100,19 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	/// Get the object of a block.
 	pub fn block_at(
 		&self,
-		hash: &IdentifierOf<C>,
-	) -> Result<BlockOf<C>, B::Error> {
+		hash: &B::Identifier,
+	) -> Result<B, Ba::Error> {
 		self.backend.read().expect("backend lock is poisoned")
 			.block_at(hash)
 	}
 
 	/// Begin an import operation, returns an importer.
-	pub fn begin_import<'a, 'executor, E: BlockExecutor<Context=C>>(
+	pub fn begin_import<'a, 'executor, E: BlockExecutor<Block=B>>(
 		&'a self,
 		executor: &'executor E
-	) -> Importer<'a, 'executor, E, B> {
+	) -> Importer<'a, 'executor, E, A, Ba> where
+		Ba::State: AsExternalities<E::Externalities>
+	{
 		Importer {
 			executor,
 			backend: self,
@@ -121,7 +122,7 @@ impl<C: ImportContext, B> SharedBackend<C, B> where
 	}
 }
 
-impl<C: ImportContext, B: Backend<C>> Clone for SharedBackend<C, B> {
+impl<B: Block, A: Auxiliary<B>, Ba: Backend<B, A>> Clone for SharedBackend<B, A, Ba> {
 	fn clone(&self) -> Self {
 		SharedBackend {
 			backend: self.backend.clone(),
@@ -132,26 +133,23 @@ impl<C: ImportContext, B: Backend<C>> Clone for SharedBackend<C, B> {
 }
 
 /// Block importer.
-pub struct Importer<'a, 'executor, E: BlockExecutor, B: Backend<E::Context>> where
-	E::Context: ImportContext,
-{
+pub struct Importer<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> {
 	executor: &'executor E,
-	backend: &'a SharedBackend<E::Context, B>,
-	pending: Operation<E::Context, B>,
+	backend: &'a SharedBackend<E::Block, A, Ba>,
+	pending: Operation<E::Block, Ba::State, A>,
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, E: BlockExecutor, B> Importer<'a, 'executor, E, B> where
-	B: Backend<E::Context, Operation=Operation<E::Context, B>>,
-	E::Context: ImportContext,
+impl<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> Importer<'a, 'executor, E, A, Ba> where
+	Ba::State: AsExternalities<E::Externalities>,
 {
 	/// Get the associated backend of the importer.
-	pub fn backend(&self) -> &'a SharedBackend<E::Context, B> {
+	pub fn backend(&self) -> &'a SharedBackend<E::Block, A, Ba> {
 		self.backend
 	}
 
 	/// Import a new block.
-	pub fn import_block(&mut self, block: BlockOf<E::Context>) -> Result<(), Error> {
+	pub fn import_block(&mut self, block: E::Block) -> Result<(), Error> {
 		let mut state = self.backend
 			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
@@ -165,27 +163,27 @@ impl<'a, 'executor, E: BlockExecutor, B> Importer<'a, 'executor, E, B> where
 	}
 
 	/// Import a raw block.
-	pub fn import_raw(&mut self, operation: ImportOperation<E::Context, B>) {
+	pub fn import_raw(&mut self, operation: ImportOperation<E::Block, Ba::State>) {
 		self.pending.import_block.push(operation);
 	}
 
 	/// Set head to given hash.
-	pub fn set_head(&mut self, head: IdentifierOf<E::Context>) {
+	pub fn set_head(&mut self, head: <E::Block as Block>::Identifier) {
 		self.pending.set_head = Some(head);
 	}
 
 	/// Insert auxiliary value.
-	pub fn insert_auxiliary(&mut self, aux: AuxiliaryOf<E::Context>) {
+	pub fn insert_auxiliary(&mut self, aux: A) {
 		self.pending.insert_auxiliaries.push(aux);
 	}
 
 	/// Remove auxiliary value.
-	pub fn remove_auxiliary(&mut self, aux_key: AuxiliaryKeyOf<E::Context>) {
+	pub fn remove_auxiliary(&mut self, aux_key: A::Key) {
 		self.pending.remove_auxiliaries.push(aux_key);
 	}
 
 	/// Commit operation and drop import lock.
-	pub fn commit(self) -> Result<(), B::Error> {
+	pub fn commit(self) -> Result<(), Ba::Error> {
 		self.backend.backend.write().expect("backend lock is poisoned")
 			.commit(self.pending)
 	}
