@@ -31,7 +31,7 @@ impl fmt::Display for Error {
 impl stderror::Error for Error { }
 
 /// State stored in memory.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct MemoryState {
 	storage: HashMap<Vec<u8>, Vec<u8>>,
 }
