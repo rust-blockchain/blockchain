@@ -5,7 +5,7 @@ mod runtime;
 
 use blockchain::backend::MemoryBackend;
 use blockchain::chain::{SharedBackend, BlockBuilder};
-use blockchain::traits::Block as BlockT;
+use blockchain::traits::{Block as BlockT, ChainQuery};
 use libp2p::{secio, NetworkBehaviour};
 use libp2p::floodsub::{Floodsub, Topic, TopicBuilder};
 use libp2p::kad::Kademlia;
@@ -51,7 +51,7 @@ impl<TSubstream: AsyncRead + AsyncWrite> NetworkBehaviourEventProcess<libp2p::fl
 
 			match message {
 				Message::Request(hash) => {
-					let block = self.backend.block_at(&hash).unwrap();
+					let block = self.backend.read().block_at(&hash).unwrap();
 					self.floodsub.publish(&self.topic, Message::Block(block).encode());
 				},
 				Message::Block(block) => {
@@ -220,7 +220,7 @@ fn builder_thread(backend_build: SharedBackend<Block, (), MemoryBackend<Block, (
 	loop {
 		thread::sleep(Duration::from_secs(5));
 
-		let head = backend_build.head();
+		let head = backend_build.read().head();
 		let executor = Executor;
 		println!("Building on top of {}", head);
 
@@ -259,7 +259,7 @@ fn importer_thread(backend_import: SharedBackend<Block, (), MemoryBackend<Block,
 		request_sender.unbounded_send(Message::Extrinsic(Extrinsic::Add(count))).unwrap();
 		count += 1;
 
-		let head = backend_import.head();
+		let head = backend_import.read().head();
 		let executor = Executor;
 		println!("Importing on top of {}", head);
 
@@ -268,7 +268,7 @@ fn importer_thread(backend_import: SharedBackend<Block, (), MemoryBackend<Block,
 				let mut imported = Vec::new();
 
 				for (_, block) in &waiting {
-					if backend_import.contains(&block.parent_id().unwrap()).unwrap() {
+					if backend_import.read().contains(&block.parent_id().unwrap()).unwrap() {
 						let mut importer = backend_import.begin_import(&executor);
 						importer.import_block(block.clone()).unwrap();
 						importer.set_head(block.id());
@@ -291,7 +291,7 @@ fn importer_thread(backend_import: SharedBackend<Block, (), MemoryBackend<Block,
 
 		// Import the block again to importer.
 		let mut importer = backend_import.begin_import(&executor);
-		if !backend_import.contains(&block.parent_id().unwrap()).unwrap() {
+		if !backend_import.read().contains(&block.parent_id().unwrap()).unwrap() {
 			request_sender.unbounded_send(Message::Request(block.parent_id().unwrap())).unwrap();
 			waiting.insert(block.id(), block);
 

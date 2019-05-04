@@ -1,7 +1,8 @@
 use std::sync::{Arc, RwLock, Mutex, MutexGuard};
+use std::ops::Deref;
 use std::marker::PhantomData;
 use super::Error;
-use crate::traits::{Operation, ImportOperation, Block, BlockExecutor, Backend, AsExternalities, Auxiliary};
+use crate::traits::{Operation, ImportOperation, Block, BlockExecutor, Backend, AsExternalities, Auxiliary, ChainQuery};
 
 /// A shared backend that also allows atomic import operation.
 pub struct SharedBackend<B: Block, A: Auxiliary<B>, Ba: Backend<B, A>> {
@@ -22,88 +23,9 @@ impl<B: Block, A: Auxiliary<B>, Ba> SharedBackend<B, A, Ba> where
 		}
 	}
 
-	/// Get the genesis hash of the chain.
-	pub fn genesis(&self) -> B::Identifier {
+	/// Return a read handle of the backend.
+	pub fn read<'a>(&'a self) -> impl Deref<Target=Ba> + 'a {
 		self.backend.read().expect("backend lock is poisoned")
-			.genesis()
-	}
-
-	/// Get the head of the chain.
-	pub fn head(&self) -> B::Identifier {
-		self.backend.read().expect("backend lock is poisoned")
-			.head()
-	}
-
-	/// Check whether a hash is contained in the chain.
-	pub fn contains(
-		&self,
-		hash: &B::Identifier,
-	) -> Result<bool, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.contains(hash)
-	}
-
-	/// Check whether a block is canonical.
-	pub fn is_canon(
-		&self,
-		hash: &B::Identifier
-	) -> Result<bool, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.is_canon(hash)
-	}
-
-	/// Look up a canonical block via its depth.
-	pub fn lookup_canon_depth(
-		&self,
-		depth: usize,
-	) -> Result<Option<B::Identifier>, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.lookup_canon_depth(depth)
-	}
-
-	/// Get the auxiliary value by key.
-	pub fn auxiliary(
-		&self,
-		key: &A::Key
-	) -> Result<Option<A>, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.auxiliary(key)
-	}
-
-	/// Get the depth of a block.
-	pub fn depth_at(
-		&self,
-		hash: &B::Identifier,
-	) -> Result<usize, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.depth_at(hash)
-	}
-
-	/// Get children of a block.
-	pub fn children_at(
-		&self,
-		hash: &B::Identifier,
-	) -> Result<Vec<B::Identifier>, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.children_at(hash)
-	}
-
-	/// Get the state object of a block.
-	pub fn state_at(
-		&self,
-		hash: &B::Identifier,
-	) -> Result<Ba::State, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.state_at(hash)
-	}
-
-	/// Get the object of a block.
-	pub fn block_at(
-		&self,
-		hash: &B::Identifier,
-	) -> Result<B, Ba::Error> {
-		self.backend.read().expect("backend lock is poisoned")
-			.block_at(hash)
 	}
 
 	/// Begin an import operation, returns an importer.
@@ -140,8 +62,8 @@ pub struct Importer<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba:
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> Importer<'a, 'executor, E, A, Ba> where
-	Ba::State: AsExternalities<E::Externalities>,
+impl<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: ChainQuery<E::Block, A>> Importer<'a, 'executor, E, A, Ba> where
+	<Ba as Backend<E::Block, A>>::State: AsExternalities<E::Externalities>,
 {
 	/// Get the associated backend of the importer.
 	pub fn backend(&self) -> &'a SharedBackend<E::Block, A, Ba> {
@@ -151,6 +73,7 @@ impl<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Blo
 	/// Import a new block.
 	pub fn import_block(&mut self, block: E::Block) -> Result<(), Error> {
 		let mut state = self.backend
+			.read()
 			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 		self.executor.execute_block(&block, state.as_externalities())

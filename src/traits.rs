@@ -100,13 +100,22 @@ impl<B: Block, S, A: Auxiliary<B>> Default for Operation<B, S, A> {
 	}
 }
 
-/// Backend for a block context.
-pub trait Backend<B: Block, A: Auxiliary<B>>: Sized {
+/// Commit-able backend for a block context.
+pub trait Backend<B: Block, A: Auxiliary<B>> {
 	/// State type
 	type State;
 	/// Error type
 	type Error: stderror::Error + 'static;
 
+	/// Commit operation.
+	fn commit(
+		&mut self,
+		operation: Operation<B, Self::State, A>,
+	) -> Result<(), Self::Error>;
+}
+
+/// Chain query interface for a backend.
+pub trait ChainQuery<B: Block, A: Auxiliary<B>>: Backend<B, A> {
 	/// Get the genesis hash of the chain.
 	fn genesis(&self) -> B::Identifier;
 	/// Get the head of the chain.
@@ -116,7 +125,7 @@ pub trait Backend<B: Block, A: Auxiliary<B>>: Sized {
 	fn contains(
 		&self,
 		hash: &B::Identifier,
-	) -> Result<bool, Self::Error>;
+	) -> Result<bool, <Self as Backend<B, A>>::Error>;
 
 	/// Check whether a block is canonical.
 	fn is_canon(
@@ -128,43 +137,37 @@ pub trait Backend<B: Block, A: Auxiliary<B>>: Sized {
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<B::Identifier>, Self::Error>;
+	) -> Result<Option<B::Identifier>, <Self as Backend<B, A>>::Error>;
 
 	/// Get the auxiliary value by key.
 	fn auxiliary(
 		&self,
 		key: &A::Key,
-	) -> Result<Option<A>, Self::Error>;
+	) -> Result<Option<A>, <Self as Backend<B, A>>::Error>;
 
 	/// Get the depth of a block.
 	fn depth_at(
 		&self,
 		hash: &B::Identifier,
-	) -> Result<usize, Self::Error>;
+	) -> Result<usize, <Self as Backend<B, A>>::Error>;
 
 	/// Get children of a block.
 	fn children_at(
 		&self,
 		hash: &B::Identifier,
-	) -> Result<Vec<B::Identifier>, Self::Error>;
+	) -> Result<Vec<B::Identifier>, <Self as Backend<B, A>>::Error>;
 
 	/// Get the state object of a block.
 	fn state_at(
 		&self,
 		hash: &B::Identifier,
-	) -> Result<Self::State, Self::Error>;
+	) -> Result<<Self as Backend<B, A>>::State, <Self as Backend<B, A>>::Error>;
 
 	/// Get the object of a block.
 	fn block_at(
 		&self,
 		hash: &B::Identifier,
-	) -> Result<B, Self::Error>;
-
-	/// Commit operation.
-	fn commit(
-		&mut self,
-		operation: Operation<B, Self::State, A>,
-	) -> Result<(), Self::Error>;
+	) -> Result<B, <Self as Backend<B, A>>::Error>;
 }
 
 /// Trait used for committing block, usually built on top of a backend.

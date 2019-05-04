@@ -4,6 +4,7 @@ use std::{fmt, error as stderror};
 use crate::traits::{
 	AsExternalities, Backend, NullExternalities,
 	StorageExternalities, Block, Auxiliary, Operation,
+	ChainQuery,
 };
 use super::tree_route;
 
@@ -84,81 +85,6 @@ pub struct MemoryBackend<B: Block, A: Auxiliary<B>> {
 impl<B: Block, A: Auxiliary<B>> Backend<B, A> for MemoryBackend<B, A> {
 	type State = MemoryState;
 	type Error = Error;
-
-	fn head(&self) -> B::Identifier {
-		self.head
-	}
-
-	fn genesis(&self) -> B::Identifier {
-		self.genesis
-	}
-
-	fn contains(
-		&self,
-		id: &B::Identifier
-	) -> Result<bool, Error> {
-		Ok(self.blocks_and_states.contains_key(id))
-	}
-
-	fn is_canon(
-		&self,
-		id: &B::Identifier
-	) -> Result<bool, Error> {
-		self.blocks_and_states.get(id)
-			.map(|data| data.is_canon)
-			.ok_or(Error::NotExist)
-	}
-
-	fn lookup_canon_depth(
-		&self,
-		depth: usize,
-	) -> Result<Option<B::Identifier>, Error> {
-		Ok(self.canon_depth_mappings.get(&depth)
-		   .map(|h| h.clone()))
-	}
-
-	fn auxiliary(
-		&self,
-		key: &A::Key
-	) -> Result<Option<A>, Error> {
-		Ok(self.auxiliaries.get(key).map(|v| v.clone()))
-	}
-
-	fn children_at(
-		&self,
-		id: &B::Identifier,
-	) -> Result<Vec<B::Identifier>, Error> {
-		self.blocks_and_states.get(id)
-			.map(|data| data.children.clone())
-			.ok_or(Error::NotExist)
-	}
-
-	fn depth_at(
-		&self,
-		id: &B::Identifier
-	) -> Result<usize, Error> {
-		self.blocks_and_states.get(id)
-		   .map(|data| data.depth)
-		   .ok_or(Error::NotExist)
-	}
-
-	fn block_at(
-		&self,
-		id: &B::Identifier,
-	) -> Result<B, Error> {
-		self.blocks_and_states.get(id)
-			.map(|data| data.block.clone())
-			.ok_or(Error::NotExist)
-	}
-
-	fn state_at(
-		&self,
-		id: &B::Identifier,
-	) -> Result<MemoryState, Error> {
-		self.blocks_and_states.get(id)
-			.map(|data| data.state.clone())
-			.ok_or(Error::NotExist)
-	}
 
 	fn commit(
 		&mut self,
@@ -275,6 +201,83 @@ impl<B: Block, A: Auxiliary<B>> Backend<B, A> for MemoryBackend<B, A> {
 		}
 
 		Ok(())
+	}
+}
+
+impl<B: Block, A: Auxiliary<B>> ChainQuery<B, A> for MemoryBackend<B, A> {
+	fn head(&self) -> B::Identifier {
+		self.head
+	}
+
+	fn genesis(&self) -> B::Identifier {
+		self.genesis
+	}
+
+	fn contains(
+		&self,
+		id: &B::Identifier
+	) -> Result<bool, Error> {
+		Ok(self.blocks_and_states.contains_key(id))
+	}
+
+	fn is_canon(
+		&self,
+		id: &B::Identifier
+	) -> Result<bool, Error> {
+		self.blocks_and_states.get(id)
+			.map(|data| data.is_canon)
+			.ok_or(Error::NotExist)
+	}
+
+	fn lookup_canon_depth(
+		&self,
+		depth: usize,
+	) -> Result<Option<B::Identifier>, Error> {
+		Ok(self.canon_depth_mappings.get(&depth)
+		   .map(|h| h.clone()))
+	}
+
+	fn auxiliary(
+		&self,
+		key: &A::Key
+	) -> Result<Option<A>, Error> {
+		Ok(self.auxiliaries.get(key).map(|v| v.clone()))
+	}
+
+	fn children_at(
+		&self,
+		id: &B::Identifier,
+	) -> Result<Vec<B::Identifier>, Error> {
+		self.blocks_and_states.get(id)
+			.map(|data| data.children.clone())
+			.ok_or(Error::NotExist)
+	}
+
+	fn depth_at(
+		&self,
+		id: &B::Identifier
+	) -> Result<usize, Error> {
+		self.blocks_and_states.get(id)
+		   .map(|data| data.depth)
+		   .ok_or(Error::NotExist)
+	}
+
+	fn block_at(
+		&self,
+		id: &B::Identifier,
+	) -> Result<B, Error> {
+		self.blocks_and_states.get(id)
+			.map(|data| data.block.clone())
+			.ok_or(Error::NotExist)
+	}
+
+	fn state_at(
+		&self,
+		id: &B::Identifier,
+	) -> Result<MemoryState, Error> {
+		self.blocks_and_states.get(id)
+			.map(|data| data.state.clone())
+			.ok_or(Error::NotExist)
 	}
 }
 

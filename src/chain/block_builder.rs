@@ -1,7 +1,7 @@
 use super::{Error, SharedBackend};
 use crate::traits::{
 	Backend, BuilderExecutor, AsExternalities,
-	ImportOperation, Block, Auxiliary,
+	ImportOperation, Block, Auxiliary, ChainQuery,
 };
 
 /// Block builder.
@@ -11,15 +11,15 @@ pub struct BlockBuilder<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: Back
 	pending_state: Ba::State,
 }
 
-impl<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> BlockBuilder<'a, E, A, Ba> where
-	Ba::State: AsExternalities<E::Externalities>,
+impl<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: ChainQuery<E::Block, A>> BlockBuilder<'a, E, A, Ba> where
+	<Ba as Backend<E::Block, A>>::State: AsExternalities<E::Externalities>,
 {
 	/// Create a new block builder.
 	pub fn new(backend: &SharedBackend<E::Block, A, Ba>, executor: &'a E, parent_hash: &<E::Block as Block>::Identifier, inherent: E::Inherent) -> Result<Self, Error> {
-		let parent_block = backend.block_at(parent_hash)
+		let parent_block = backend.read().block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 
-		let mut pending_state = backend.state_at(parent_hash)
+		let mut pending_state = backend.read().state_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 
 		let pending_block = executor.initialize_block(
