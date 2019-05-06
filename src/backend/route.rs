@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{ChainQuery, Block, Auxiliary};
+use crate::traits::{Auxiliary, Block, ChainQuery};
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -42,104 +42,106 @@ use crate::traits::{ChainQuery, Block, Auxiliary};
 /// C -> E1 -> E2
 /// ```
 pub struct TreeRoute<B: Block> {
-	route: Vec<B::Identifier>,
-	pivot: usize,
+    route: Vec<B::Identifier>,
+    pivot: usize,
 }
 
 impl<B: Block> TreeRoute<B> {
-	/// Get a slice of all retracted blocks in reverse order (towards common ancestor)
-	pub fn retracted(&self) -> &[B::Identifier] {
-		&self.route[..self.pivot]
-	}
+    /// Get a slice of all retracted blocks in reverse order (towards common ancestor)
+    pub fn retracted(&self) -> &[B::Identifier] {
+        &self.route[..self.pivot]
+    }
 
-	/// Get the common ancestor block. This might be one of the two blocks of the
-	/// route.
-	pub fn common_block(&self) -> &B::Identifier {
-		self.route.get(self.pivot).expect("tree-routes are computed between blocks; \
-			which are included in the route; \
-			thus it is never empty; qed")
-	}
+    /// Get the common ancestor block. This might be one of the two blocks of the
+    /// route.
+    pub fn common_block(&self) -> &B::Identifier {
+        self.route.get(self.pivot).expect(
+            "tree-routes are computed between blocks; \
+             which are included in the route; \
+             thus it is never empty; qed",
+        )
+    }
 
-	/// Get a slice of enacted blocks (descendents of the common ancestor)
-	pub fn enacted(&self) -> &[B::Identifier] {
-		&self.route[self.pivot + 1 ..]
-	}
+    /// Get a slice of enacted blocks (descendents of the common ancestor)
+    pub fn enacted(&self) -> &[B::Identifier] {
+        &self.route[self.pivot + 1..]
+    }
 }
 
 /// Compute a tree-route between two blocks. See tree-route docs for more details.
 pub fn tree_route<B: Block, A: Auxiliary<B>, Ba: ChainQuery<B, A>>(
-	backend: &Ba,
-	from_id: &B::Identifier,
-	to_id: &B::Identifier,
+    backend: &Ba,
+    from_id: &B::Identifier,
+    to_id: &B::Identifier,
 ) -> Result<TreeRoute<B>, Ba::Error> {
-	let mut from = backend.block_at(from_id)?;
-	let mut to = backend.block_at(to_id)?;
+    let mut from = backend.block_at(from_id)?;
+    let mut to = backend.block_at(to_id)?;
 
-	let mut from_branch = Vec::new();
-	let mut to_branch = Vec::new();
+    let mut from_branch = Vec::new();
+    let mut to_branch = Vec::new();
 
-	{
-		let mut from_depth = backend.depth_at(from_id)?;
-		let mut to_depth = backend.depth_at(to_id)?;
+    {
+        let mut from_depth = backend.depth_at(from_id)?;
+        let mut to_depth = backend.depth_at(to_id)?;
 
-		while to_depth > from_depth {
-			let to_parent_id = match to.parent_id() {
-				Some(parent_id) => parent_id,
-				None => {
-					assert!(to_depth == 0, "When parent_id is None, depth should be 0");
-					break;
-				}
-			};
+        while to_depth > from_depth {
+            let to_parent_id = match to.parent_id() {
+                Some(parent_id) => parent_id,
+                None => {
+                    assert!(to_depth == 0, "When parent_id is None, depth should be 0");
+                    break;
+                }
+            };
 
-			to_branch.push(to.id());
-			to = backend.block_at(&to_parent_id)?;
-			to_depth = backend.depth_at(&to_parent_id)?;
-		}
+            to_branch.push(to.id());
+            to = backend.block_at(&to_parent_id)?;
+            to_depth = backend.depth_at(&to_parent_id)?;
+        }
 
-		while from_depth > to_depth {
-			let from_parent_id = match from.parent_id() {
-				Some(parent_id) => parent_id,
-				None => {
-					assert!(to_depth == 0, "When parent_id is None, depth should be 0");
-					break;
-				}
-			};
+        while from_depth > to_depth {
+            let from_parent_id = match from.parent_id() {
+                Some(parent_id) => parent_id,
+                None => {
+                    assert!(to_depth == 0, "When parent_id is None, depth should be 0");
+                    break;
+                }
+            };
 
-			from_branch.push(from.id());
-			from = backend.block_at(&from_parent_id)?;
-			from_depth = backend.depth_at(&from_parent_id)?;
-		}
-	}
+            from_branch.push(from.id());
+            from = backend.block_at(&from_parent_id)?;
+            from_depth = backend.depth_at(&from_parent_id)?;
+        }
+    }
 
-	while from.id() != to.id() {
-		let to_parent_id = match to.parent_id() {
-			Some(parent_id) => parent_id,
-			None => {
-				panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
-			}
-		};
+    while from.id() != to.id() {
+        let to_parent_id = match to.parent_id() {
+            Some(parent_id) => parent_id,
+            None => {
+                panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
+            }
+        };
 
-		let from_parent_id = match from.parent_id() {
-			Some(parent_id) => parent_id,
-			None => {
-				panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
-			}
-		};
+        let from_parent_id = match from.parent_id() {
+            Some(parent_id) => parent_id,
+            None => {
+                panic!("During backend import, all blocks are checked to have parent; this branch is when common parent does not exist; qed");
+            }
+        };
 
-		to_branch.push(to.id());
-		to = backend.block_at(&to_parent_id)?;
+        to_branch.push(to.id());
+        to = backend.block_at(&to_parent_id)?;
 
-		from_branch.push(from.id());
-		from = backend.block_at(&from_parent_id)?;
-	}
+        from_branch.push(from.id());
+        from = backend.block_at(&from_parent_id)?;
+    }
 
-	// add the pivot block. and append the reversed to-branch (note that it's reverse order originalls)
-	let pivot = from_branch.len();
-	from_branch.push(to.id());
-	from_branch.extend(to_branch.into_iter().rev());
+    // add the pivot block. and append the reversed to-branch (note that it's reverse order originalls)
+    let pivot = from_branch.len();
+    from_branch.push(to.id());
+    from_branch.extend(to_branch.into_iter().rev());
 
-	Ok(TreeRoute {
-		route: from_branch,
-		pivot,
-	})
+    Ok(TreeRoute {
+        route: from_branch,
+        pivot,
+    })
 }
