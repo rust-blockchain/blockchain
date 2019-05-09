@@ -11,5 +11,4 @@ edition = "2018"
 [workspace]
 members = [
 	"examples/counter",
-	"network",
 ]
