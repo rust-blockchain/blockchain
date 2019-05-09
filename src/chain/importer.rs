@@ -1,25 +1,20 @@
 use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use std::ops::Deref;
-use std::marker::PhantomData;
 use super::Error;
 use crate::traits::{Operation, ImportOperation, Block, BlockExecutor, Backend, AsExternalities, Auxiliary, ChainQuery};
 
 /// A shared backend that also allows atomic import operation.
-pub struct SharedBackend<B: Block, A: Auxiliary<B>, Ba: Backend<B, A>> {
+pub struct SharedBackend<Ba: Backend> {
 	backend: Arc<RwLock<Ba>>,
 	import_lock: Arc<Mutex<()>>,
-	_marker: PhantomData<(B, A)>,
 }
 
-impl<B: Block, A: Auxiliary<B>, Ba> SharedBackend<B, A, Ba> where
-	Ba: Backend<B, A>
-{
+impl<Ba: Backend> SharedBackend<Ba> {
 	/// Create a new shared backend.
 	pub fn new(backend: Ba) -> Self {
 		Self {
 			backend: Arc::new(RwLock::new(backend)),
 			import_lock: Arc::new(Mutex::new(())),
-			_marker: PhantomData,
 		}
 	}
 
@@ -29,10 +24,10 @@ impl<B: Block, A: Auxiliary<B>, Ba> SharedBackend<B, A, Ba> where
 	}
 
 	/// Begin an import operation, returns an importer.
-	pub fn begin_import<'a, 'executor, E: BlockExecutor<Block=B>>(
+	pub fn begin_import<'a, 'executor, E: BlockExecutor<Block=Ba::Block>>(
 		&'a self,
 		executor: &'executor E
-	) -> Importer<'a, 'executor, E, A, Ba> where
+	) -> Importer<'a, 'executor, E, Ba> where
 		Ba::State: AsExternalities<E::Externalities>
 	{
 		Importer {
@@ -44,29 +39,32 @@ impl<B: Block, A: Auxiliary<B>, Ba> SharedBackend<B, A, Ba> where
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>, Ba: Backend<B, A>> Clone for SharedBackend<B, A, Ba> {
+impl<Ba: Backend> Clone for SharedBackend<Ba> {
 	fn clone(&self) -> Self {
 		SharedBackend {
 			backend: self.backend.clone(),
 			import_lock: self.import_lock.clone(),
-			_marker: PhantomData,
 		}
 	}
 }
 
 /// Block importer.
-pub struct Importer<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> {
+pub struct Importer<'a, 'executor, E: BlockExecutor, Ba: Backend<Block=E::Block>> where
+	Ba::Auxiliary: Auxiliary<E::Block>
+{
 	executor: &'executor E,
-	backend: &'a SharedBackend<E::Block, A, Ba>,
-	pending: Operation<E::Block, Ba::State, A>,
+	backend: &'a SharedBackend<Ba>,
+	pending: Operation<E::Block, Ba::State, Ba::Auxiliary>,
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: ChainQuery<E::Block, A>> Importer<'a, 'executor, E, A, Ba> where
-	<Ba as Backend<E::Block, A>>::State: AsExternalities<E::Externalities>,
+impl<'a, 'executor, E: BlockExecutor, Ba> Importer<'a, 'executor, E, Ba> where
+	Ba: Backend<Block=E::Block> + ChainQuery,
+	Ba::Auxiliary: Auxiliary<E::Block>,
+	Ba::State: AsExternalities<E::Externalities>,
 {
 	/// Get the associated backend of the importer.
-	pub fn backend(&self) -> &'a SharedBackend<E::Block, A, Ba> {
+	pub fn backend(&self) -> &'a SharedBackend<Ba> {
 		self.backend
 	}
 
@@ -96,12 +94,12 @@ impl<'a, 'executor, E: BlockExecutor, A: Auxiliary<E::Block>, Ba: ChainQuery<E::
 	}
 
 	/// Insert auxiliary value.
-	pub fn insert_auxiliary(&mut self, aux: A) {
+	pub fn insert_auxiliary(&mut self, aux: Ba::Auxiliary) {
 		self.pending.insert_auxiliaries.push(aux);
 	}
 
 	/// Remove auxiliary value.
-	pub fn remove_auxiliary(&mut self, aux_key: A::Key) {
+	pub fn remove_auxiliary(&mut self, aux_key: <Ba::Auxiliary as Auxiliary<E::Block>>::Key) {
 		self.pending.remove_auxiliaries.push(aux_key);
 	}
 

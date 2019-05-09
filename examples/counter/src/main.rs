@@ -29,7 +29,7 @@ struct CounterBehaviour<TSubstream: AsyncRead + AsyncWrite> {
 	#[behaviour(ignore)]
 	sender: Option<UnboundedSender<Block>>,
 	#[behaviour(ignore)]
-	backend: SharedBackend<Block, (), MemoryBackend<Block, ()>>,
+	backend: SharedBackend<MemoryBackend<Block, ()>>,
 	#[behaviour(ignore)]
 	topic: Topic,
 	#[behaviour(ignore)]
@@ -112,7 +112,7 @@ fn main() {
 	}
 }
 
-fn start_network(backend: SharedBackend<Block, (), MemoryBackend<Block, ()>>, sender: Option<UnboundedSender<Block>>, mut receiver: Option<UnboundedReceiver<Block>>, mut request_receiver: Option<UnboundedReceiver<Message>>, pending_transactions: Option<Arc<Mutex<Vec<Extrinsic>>>>, to_dial: Option<String>) {
+fn start_network(backend: SharedBackend<MemoryBackend<Block, ()>>, sender: Option<UnboundedSender<Block>>, mut receiver: Option<UnboundedReceiver<Block>>, mut request_receiver: Option<UnboundedReceiver<Message>>, pending_transactions: Option<Arc<Mutex<Vec<Extrinsic>>>>, to_dial: Option<String>) {
 	// Create a random PeerId
 	let local_key = if to_dial.is_some() {
 		secio::SecioKeyPair::ed25519_raw_key(
@@ -216,7 +216,7 @@ fn start_network(backend: SharedBackend<Block, (), MemoryBackend<Block, ()>>, se
 	}));
 }
 
-fn builder_thread(backend_build: SharedBackend<Block, (), MemoryBackend<Block, ()>>, sender: UnboundedSender<Block>, pending_transactions: Arc<Mutex<Vec<Extrinsic>>>) {
+fn builder_thread(backend_build: SharedBackend<MemoryBackend<Block, ()>>, sender: UnboundedSender<Block>, pending_transactions: Arc<Mutex<Vec<Extrinsic>>>) {
 	loop {
 		thread::sleep(Duration::from_secs(5));
 
@@ -250,7 +250,7 @@ fn builder_thread(backend_build: SharedBackend<Block, (), MemoryBackend<Block, (
 	}
 }
 
-fn importer_thread(backend_import: SharedBackend<Block, (), MemoryBackend<Block, ()>>, receiver: UnboundedReceiver<Block>, request_sender: UnboundedSender<Message>) {
+fn importer_thread(backend_import: SharedBackend<MemoryBackend<Block, ()>>, receiver: UnboundedReceiver<Block>, request_sender: UnboundedSender<Message>) {
 	let mut receiver = receiver.wait();
 	let mut waiting: HashMap<H256, Block> = HashMap::new();
 	let mut count = 0;

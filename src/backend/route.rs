@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{ChainQuery, Block, Auxiliary};
+use crate::traits::{ChainQuery, Block};
 
 /// A tree-route from one block to another in the chain.
 ///
@@ -67,11 +67,11 @@ impl<B: Block> TreeRoute<B> {
 }
 
 /// Compute a tree-route between two blocks. See tree-route docs for more details.
-pub fn tree_route<B: Block, A: Auxiliary<B>, Ba: ChainQuery<B, A>>(
+pub fn tree_route<Ba: ChainQuery>(
 	backend: &Ba,
-	from_id: &B::Identifier,
-	to_id: &B::Identifier,
-) -> Result<TreeRoute<B>, Ba::Error> {
+	from_id: &<Ba::Block as Block>::Identifier,
+	to_id: &<Ba::Block as Block>::Identifier,
+) -> Result<TreeRoute<Ba::Block>, Ba::Error> {
 	let mut from = backend.block_at(from_id)?;
 	let mut to = backend.block_at(to_id)?;
 

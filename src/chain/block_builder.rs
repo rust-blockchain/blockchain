@@ -1,21 +1,23 @@
 use super::{Error, SharedBackend};
 use crate::traits::{
 	Backend, BuilderExecutor, AsExternalities,
-	ImportOperation, Block, Auxiliary, ChainQuery,
+	ImportOperation, Block, ChainQuery, Auxiliary
 };
 
 /// Block builder.
-pub struct BlockBuilder<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: Backend<E::Block, A>> {
+pub struct BlockBuilder<'a, E: BuilderExecutor, Ba: Backend> {
 	executor: &'a E,
 	pending_block: E::BuildBlock,
 	pending_state: Ba::State,
 }
 
-impl<'a, E: BuilderExecutor, A: Auxiliary<E::Block>, Ba: ChainQuery<E::Block, A>> BlockBuilder<'a, E, A, Ba> where
-	<Ba as Backend<E::Block, A>>::State: AsExternalities<E::Externalities>,
+impl<'a, E: BuilderExecutor, Ba> BlockBuilder<'a, E, Ba> where
+	Ba: Backend<Block=E::Block> + ChainQuery,
+	<Ba as Backend>::Auxiliary: Auxiliary<E::Block>,
+	<Ba as Backend>::State: AsExternalities<E::Externalities>,
 {
 	/// Create a new block builder.
-	pub fn new(backend: &SharedBackend<E::Block, A, Ba>, executor: &'a E, parent_hash: &<E::Block as Block>::Identifier, inherent: E::Inherent) -> Result<Self, Error> {
+	pub fn new(backend: &SharedBackend<Ba>, executor: &'a E, parent_hash: &<E::Block as Block>::Identifier, inherent: E::Inherent) -> Result<Self, Error> {
 		let parent_block = backend.read().block_at(parent_hash)
 			.map_err(|e| Error::Backend(Box::new(e)))?;
 

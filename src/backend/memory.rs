@@ -82,8 +82,10 @@ pub struct MemoryBackend<B: Block, A: Auxiliary<B>> {
 	auxiliaries: HashMap<A::Key, A>,
 }
 
-impl<B: Block, A: Auxiliary<B>> Backend<B, A> for MemoryBackend<B, A> {
+impl<B: Block, A: Auxiliary<B>> Backend for MemoryBackend<B, A> {
+	type Block = B;
 	type State = MemoryState;
+	type Auxiliary = A;
 	type Error = Error;
 
 	fn commit(
@@ -204,7 +206,7 @@ impl<B: Block, A: Auxiliary<B>> Backend<B, A> for MemoryBackend<B, A> {
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>> ChainQuery<B, A> for MemoryBackend<B, A> {
+impl<B: Block, A: Auxiliary<B>> ChainQuery for MemoryBackend<B, A> {
 	fn head(&self) -> B::Identifier {
 		self.head
 	}
