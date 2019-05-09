@@ -1,6 +1,6 @@
 [package]
 name = "blockchain"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["Wei Tang <hi@that.world>"]
 description = "Unopinioned blockchain framework"
 license = "GPL-3.0"
