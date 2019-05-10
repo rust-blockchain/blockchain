@@ -175,12 +175,14 @@ pub trait ChainQuery: Backend {
 }
 
 /// Trait used for committing block, usually built on top of a backend.
-pub trait ImportBlock<B: Block> {
+pub trait ImportBlock {
+	/// Block type
+	type Block: Block;
 	/// Error type
 	type Error: stderror::Error + 'static;
 
 	/// Commit a block into the backend, and handle consensus and auxiliary.
-	fn import_block(&mut self, block: B) -> Result<(), Self::Error>;
+	fn import_block(&mut self, block: Self::Block) -> Result<(), Self::Error>;
 }
 
 /// Block executor
