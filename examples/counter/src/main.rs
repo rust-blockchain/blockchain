@@ -7,18 +7,26 @@ mod network;
 use blockchain::backend::MemoryBackend;
 use blockchain::chain::{SharedBackend, BlockBuilder};
 use blockchain::traits::{Block as BlockT, ChainQuery};
-use codec::{Encode, Decode};
-use codec_derive::{Encode, Decode};
 use std::thread;
 use std::time::Duration;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tokio_io::{AsyncRead, AsyncWrite};
-use primitive_types::H256;
-use crate::runtime::{Block, Executor, Extrinsic};
+use clap::{App, SubCommand, AppSettings};
+use crate::runtime::{Block, Executor};
 use crate::network::{BestDepthImporter};
 
 fn main() {
+	let matches = App::new("Blockchain counter demo")
+		.setting(AppSettings::SubcommandRequiredElseHelp)
+		.subcommand(SubCommand::with_name("local")
+					.about("Start a local test network"))
+		.get_matches();
+
+	if let Some(_) = matches.subcommand_matches("local") {
+		local_sync();
+	}
+}
+
+fn local_sync() {
 	let genesis_block = Block::genesis();
 	let backend_build = SharedBackend::new(
 		MemoryBackend::<_, ()>::with_genesis(genesis_block.clone(), Default::default())
@@ -39,7 +47,7 @@ fn main() {
 		builder_thread(backend_build);
 	});
 
-	network::start_local_best_depth_sync(peers);
+	network::local::start_local_best_depth_sync(peers);
 }
 
 
@@ -52,7 +60,7 @@ fn builder_thread(backend_build: SharedBackend<MemoryBackend<Block, ()>>) {
 		println!("Building on top of {}", head);
 
 		// Build a block.
-		let mut builder = BlockBuilder::new(&backend_build, &executor, &head, ()).unwrap();
+		let builder = BlockBuilder::new(&backend_build, &executor, &head, ()).unwrap();
 		let op = builder.finalize().unwrap();
 		let block = op.block.clone();
 

@@ -1,14 +1,9 @@
-use std::collections::HashMap;
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
-use std::sync::{Arc, mpsc::{SyncSender, Receiver, sync_channel}};
+pub mod local;
+
 use core::marker::PhantomData;
-use core::hash::Hash;
-use core::fmt::Debug;
 use codec_derive::{Encode, Decode};
 use blockchain::chain::SharedBackend;
 use blockchain::traits::{Backend, ChainQuery, ImportBlock, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
-use crate::runtime::Block;
 
 pub trait NetworkEnvironment {
 	type PeerId;
@@ -160,7 +155,7 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for
 	fn import_block(&mut self, block: Ba::Block) -> Result<(), Ba::Error> {
 		let mut importer = self.backend.begin_import(&self.executor);
 		let new_hash = block.id();
-		let (current_best_hash, current_best_depth, new_depth) = {
+		let (current_best_depth, new_depth) = {
 			let backend = importer.backend().read();
 			let current_best_hash = backend.head();
 			let current_best_depth = backend.depth_at(&current_best_hash)
@@ -170,7 +165,7 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for
 					backend.depth_at(&parent_hash).unwrap()
 				})
 				.unwrap_or(0);
-			(current_best_hash, current_best_depth, new_parent_depth + 1)
+			(current_best_depth, new_parent_depth + 1)
 		};
 
 		importer.import_block(block).unwrap();
@@ -180,113 +175,5 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for
 		importer.commit().unwrap();
 
 		Ok(())
-	}
-}
-
-pub struct LocalNetwork<P, B> {
-	senders: HashMap<P, SyncSender<(P, BestDepthMessage<B>)>>,
-}
-
-impl<P: Eq + Hash + Clone, B: Clone> LocalNetwork<P, B> {
-	pub fn send(&self, peer: &P, message: (P, BestDepthMessage<B>)) {
-		self.senders.get(peer).unwrap()
-			.send(message).unwrap();
-	}
-
-	pub fn broadcast(&self, message: (P, BestDepthMessage<B>)) {
-		for sender in self.senders.values() {
-			sender.send(message.clone()).unwrap();
-		}
-	}
-}
-
-#[derive(Clone)]
-pub struct LocalNetworkHandle<P, B> {
-	peer_id: P,
-	network: Arc<LocalNetwork<P, B>>
-}
-
-impl<P, B> NetworkEnvironment for LocalNetworkHandle<P, B> {
-	type PeerId = P;
-	type Message = BestDepthMessage<B>;
-}
-
-impl<P: Eq + Hash + Clone, B: Clone> NetworkHandle for LocalNetworkHandle<P, B> {
-	fn send(&mut self, peer: &P, message: BestDepthMessage<B>) {
-		self.network.send(peer, (self.peer_id.clone(), message));
-	}
-
-	fn broadcast(&mut self, message: BestDepthMessage<B>) {
-		self.network.broadcast((self.peer_id.clone(), message));
-	}
-}
-
-pub fn start_local_best_depth_peer<P, Ba, I>(
-	mut handle: LocalNetworkHandle<P, Ba::Block>,
-	receiver: Receiver<(P, BestDepthMessage<Ba::Block>)>,
-	peer_id: P,
-	backend: SharedBackend<Ba>,
-	importer: I,
-) -> JoinHandle<()> where
-	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
-	Ba: ChainQuery + Send + Sync + 'static,
-	Ba::Block: Debug + Send + Sync,
-	I: ImportBlock<Block=Ba::Block> + Send + Sync + 'static,
-{
-	thread::spawn(move || {
-		let this_peer_id = peer_id.clone();
-
-		let mut sync = BestDepthSync {
-			backend, importer,
-			_marker: PhantomData
-		};
-
-		loop {
-			for (peer_id, message) in receiver.try_iter() {
-				println!("peer[{:?}] on message {:?}", this_peer_id, message);
-				sync.on_message(&mut handle, &peer_id, message);
-			}
-
-			thread::sleep(Duration::from_millis(1000));
-			println!("peer[{:?}] on tick", this_peer_id);
-			sync.on_tick(&mut handle);
-		}
-	})
-}
-
-pub fn start_local_best_depth_sync<P, Ba, I>(
-	peers: HashMap<P, (SharedBackend<Ba>, I)>
-) where
-	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
-	Ba: ChainQuery + Send + Sync + 'static,
-	Ba::Block: Debug + Send + Sync,
-	I: ImportBlock<Block=Ba::Block> + Send + Sync + 'static,
-{
-	let mut senders: HashMap<P, SyncSender<(P, BestDepthMessage<Ba::Block>)>> = HashMap::new();
-	let mut peers_with_receivers: HashMap<P, (SharedBackend<Ba>, I, Receiver<(P, BestDepthMessage<Ba::Block>)>)> = HashMap::new();
-	for (peer_id, (backend, importer)) in peers {
-		let (sender, receiver) = sync_channel(10);
-		senders.insert(peer_id.clone(), sender);
-		peers_with_receivers.insert(peer_id, (backend, importer, receiver));
-	}
-
-	let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
-	let network = Arc::new(LocalNetwork { senders });
-	for (peer_id, (backend, importer, receiver)) in peers_with_receivers {
-		let join_handle = start_local_best_depth_peer(
-			LocalNetworkHandle {
-				peer_id: peer_id.clone(),
-				network: network.clone(),
-			},
-			receiver,
-			peer_id,
-			backend,
-			importer,
-		);
-		join_handles.push(join_handle);
-	}
-
-	for join_handle in join_handles {
-		join_handle.join().unwrap();
 	}
 }
