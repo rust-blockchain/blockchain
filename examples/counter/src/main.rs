@@ -5,10 +5,9 @@ mod runtime;
 
 use blockchain::backend::{MemoryBackend, KeyValueMemoryState, MemoryLikeBackend};
 use blockchain::chain::{SharedBackend, BlockBuilder};
-use blockchain::traits::{Block as BlockT, ChainQuery};
+use blockchain::traits::{Block as BlockT, ChainQuery, ImportOperation};
 use blockchain_network_simple::{BestDepthImporter, BestDepthStatusProducer};
 use std::thread;
-use std::time::Duration;
 use std::collections::HashMap;
 use clap::{App, SubCommand, AppSettings, Arg};
 use crate::runtime::{Block, Executor};
@@ -96,21 +95,21 @@ fn libp2p_sync(port: &str, author: bool) {
 
 fn builder_thread(backend_build: SharedBackend<MemoryBackend<Block, (), KeyValueMemoryState>>) {
 	loop {
-		thread::sleep(Duration::from_secs(5));
-
 		let head = backend_build.read().head();
 		let executor = Executor;
 		println!("Building on top of {}", head);
 
 		// Build a block.
 		let builder = BlockBuilder::new(&backend_build, &executor, &head, ()).unwrap();
-		let op = builder.finalize().unwrap();
-		let block = op.block.clone();
+		let (unsealed_block, state) = builder.finalize().unwrap();
+		let block = unsealed_block.seal();
 
 		// Import the built block.
 		let mut build_importer = backend_build.begin_import(&executor);
+		let new_block_hash = block.id();
+		let op = ImportOperation { block, state };
 		build_importer.import_raw(op);
-		build_importer.set_head(block.id());
+		build_importer.set_head(new_block_hash);
 		build_importer.commit().unwrap();
 	}
 }

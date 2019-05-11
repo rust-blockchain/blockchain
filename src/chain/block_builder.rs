@@ -1,7 +1,7 @@
 use super::{Error, SharedBackend};
 use crate::traits::{
 	Backend, BuilderExecutor, AsExternalities,
-	ImportOperation, Block, ChainQuery, Auxiliary
+	Block, ChainQuery, Auxiliary
 };
 
 /// Block builder.
@@ -45,15 +45,12 @@ impl<'a, E: BuilderExecutor, Ba> BlockBuilder<'a, E, Ba> where
 	}
 
 	/// Finalize the block.
-	pub fn finalize(mut self) -> Result<ImportOperation<E::BuildBlock, Ba::State>, Error> {
+	pub fn finalize(mut self) -> Result<(E::BuildBlock, Ba::State), Error> {
 		self.executor.finalize_block(
 			&mut self.pending_block,
 			self.pending_state.as_externalities()
 		).map_err(|e| Error::Executor(Box::new(e)))?;
 
-		Ok(ImportOperation {
-			block: self.pending_block,
-			state: self.pending_state,
-		})
+		Ok((self.pending_block, self.pending_state))
 	}
 }

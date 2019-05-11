@@ -153,10 +153,7 @@ impl<P, Ba: ChainQuery, I: ImportBlock<Block=Ba::Block>, St: StatusProducer> Net
 									.expect("Found hash cannot fail");
 								ret.push(block);
 							},
-							_ => {
-								println!("warn: error happened on block request message");
-								break
-							},
+							_ => break,
 						}
 					}
 				}
@@ -202,9 +199,9 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for
 	Ba::State: AsExternalities<E::Externalities>,
 {
 	type Block = E::Block;
-	type Error = Ba::Error;
+	type Error = blockchain::chain::Error;
 
-	fn import_block(&mut self, block: Ba::Block) -> Result<(), Ba::Error> {
+	fn import_block(&mut self, block: Ba::Block) -> Result<(), Self::Error> {
 		let mut importer = self.backend.begin_import(&self.executor);
 		let new_hash = block.id();
 		let (current_best_depth, new_depth) = {
@@ -220,11 +217,13 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for
 			(current_best_depth, new_parent_depth + 1)
 		};
 
-		importer.import_block(block).unwrap();
+		importer.import_block(block)?;
 		if new_depth > current_best_depth {
 			importer.set_head(new_hash);
 		}
-		importer.commit().unwrap();
+		importer.commit().map_err(|e| {
+			blockchain::chain::Error::Backend(Box::new(e))
+		})?;
 
 		Ok(())
 	}

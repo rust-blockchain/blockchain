@@ -7,35 +7,48 @@ use codec::{Encode, Decode};
 use codec_derive::{Decode, Encode};
 use sha3::{Digest, Sha3_256};
 
-#[derive(Clone, Debug, Encode, Decode)]
-pub struct Block {
-	hash: H256,
+const DIFFICULTY: usize = 2;
+
+fn is_all_zero(arr: &[u8]) -> bool {
+	arr.iter().all(|i| *i == 0)
+}
+
+#[derive(Clone, Debug)]
+pub struct UnsealedBlock {
 	parent_hash: Option<H256>,
 	extrinsics: Vec<Extrinsic>,
 }
 
-impl Block {
-	pub fn calculate_hash(&self) -> H256 {
-		let data = (self.parent_hash.clone(), self.extrinsics.clone()).encode();
-		H256::from_slice(Sha3_256::digest(&data).as_slice())
-	}
-
-	pub fn verify_hash(&self) -> bool {
-		self.hash == self.calculate_hash()
-	}
-
-	pub fn fix_hash(&mut self) {
-		self.hash = self.calculate_hash();
-	}
-
-	pub fn genesis() -> Self {
+impl UnsealedBlock {
+	pub fn seal(self) -> Block {
 		let mut block = Block {
-			hash: H256::default(),
+			parent_hash: self.parent_hash,
+			extrinsics: self.extrinsics,
+			nonce: 0,
+		};
+
+		while !is_all_zero(&block.id()[0..DIFFICULTY]) {
+			block.nonce += 1;
+		}
+
+		block
+	}
+}
+
+#[derive(Clone, Debug, Encode, Decode)]
+pub struct Block {
+	parent_hash: Option<H256>,
+	extrinsics: Vec<Extrinsic>,
+	nonce: u64,
+}
+
+impl Block {
+	pub fn genesis() -> Self {
+		Block {
 			parent_hash: None,
 			extrinsics: Vec::new(),
-		};
-		block.fix_hash();
-		block
+			nonce: 0,
+		}
 	}
 }
 
@@ -47,7 +60,7 @@ impl BlockT for Block {
 	}
 
 	fn id(&self) -> H256 {
-		self.hash
+		H256::from_slice(Sha3_256::digest(&self.encode()).as_slice())
 	}
 }
 
@@ -59,14 +72,14 @@ pub enum Extrinsic {
 #[derive(Debug)]
 pub enum Error {
 	Backend(Box<std::error::Error>),
-	HashMismatch,
+	DifficultyTooLow,
 	StateCorruption,
 }
 
 impl std::fmt::Display for Error {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
 		match self {
-			Error::HashMismatch => "Hash mismatch".fmt(f)?,
+			Error::DifficultyTooLow => "Difficulty too low".fmt(f)?,
 			Error::StateCorruption => "State is corrupted".fmt(f)?,
 			Error::Backend(_) => "Backend error".fmt(f)?,
 		}
@@ -107,8 +120,8 @@ impl BlockExecutor for Executor {
 		block: &Self::Block,
 		state: &mut Self::Externalities,
 	) -> Result<(), Error> {
-		if !block.verify_hash() {
-			return Err(Error::HashMismatch);
+		if !is_all_zero(&block.id()[0..DIFFICULTY]) {
+			return Err(Error::DifficultyTooLow);
 		}
 
 		let mut counter = self.read_counter(state)?;
@@ -128,7 +141,7 @@ impl BlockExecutor for Executor {
 impl BuilderExecutor for Executor {
 	type Error = Error;
 	type Block = Block;
-	type BuildBlock = Block;
+	type BuildBlock = UnsealedBlock;
 	type Externalities = dyn StorageExternalities + 'static;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();
@@ -139,16 +152,15 @@ impl BuilderExecutor for Executor {
 		_state: &mut Self::Externalities,
 		_inherent: (),
 	) -> Result<Self::BuildBlock, Self::Error> {
-		let mut block = block.clone();
-		block.parent_hash = Some(block.hash);
-		block.fix_hash();
-
-		Ok(block)
+		Ok(UnsealedBlock {
+			parent_hash: Some(block.id()),
+			extrinsics: Vec::new(),
+		})
 	}
 
 	fn apply_extrinsic(
 		&self,
-		block: &mut Self::Block,
+		_block: &mut Self::BuildBlock,
 		extrinsic: Self::Extrinsic,
 		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error> {
@@ -161,18 +173,15 @@ impl BuilderExecutor for Executor {
 		}
 
 		self.write_counter(counter, state);
-		block.fix_hash();
 
 		Ok(())
 	}
 
 	fn finalize_block(
 		&self,
-		block: &mut Self::Block,
+		_block: &mut Self::BuildBlock,
 		_state: &mut Self::Externalities,
 	) -> Result<(), Self::Error> {
-		block.fix_hash();
-
 		Ok(())
 	}
 }
