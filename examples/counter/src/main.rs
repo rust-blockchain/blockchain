@@ -10,7 +10,7 @@ use blockchain::traits::{Block as BlockT, ChainQuery};
 use std::thread;
 use std::time::Duration;
 use std::collections::HashMap;
-use clap::{App, SubCommand, AppSettings};
+use clap::{App, SubCommand, AppSettings, Arg};
 use crate::runtime::{Block, Executor};
 use crate::network::{BestDepthImporter};
 
@@ -19,10 +19,28 @@ fn main() {
 		.setting(AppSettings::SubcommandRequiredElseHelp)
 		.subcommand(SubCommand::with_name("local")
 					.about("Start a local test network"))
+		.subcommand(SubCommand::with_name("libp2p")
+					.about("Start a libp2p instance")
+					.arg(Arg::with_name("port")
+						 .short("p")
+						 .long("port")
+						 .takes_value(true)
+						 .help("Port to listen on"))
+					.arg(Arg::with_name("author")
+						 .long("author")
+						 .help("Whether to author blocks")))
 		.get_matches();
 
 	if let Some(_) = matches.subcommand_matches("local") {
 		local_sync();
+		return
+	}
+
+	if let Some(matches) = matches.subcommand_matches("libp2p") {
+		let port = matches.value_of("port").unwrap_or("37365");
+		let author = matches.is_present("author");
+		libp2p_sync(port, author);
+		return
 	}
 }
 
@@ -48,6 +66,21 @@ fn local_sync() {
 	});
 
 	network::local::start_local_best_depth_sync(peers);
+}
+
+fn libp2p_sync(port: &str, author: bool) {
+	let genesis_block = Block::genesis();
+	let backend = SharedBackend::new(
+		MemoryBackend::<_, ()>::with_genesis(genesis_block.clone(), Default::default())
+	);
+	let importer = BestDepthImporter::new(Executor, backend.clone());
+	if author {
+		let backend_build = backend.clone();
+		thread::spawn(move || {
+			builder_thread(backend_build);
+		});
+	}
+	network::libp2p::start_network_best_depth_sync(port, backend, importer);
 }
 
 

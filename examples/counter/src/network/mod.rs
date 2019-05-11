@@ -1,4 +1,5 @@
 pub mod local;
+pub mod libp2p;
 
 use core::marker::PhantomData;
 use codec_derive::{Encode, Decode};
