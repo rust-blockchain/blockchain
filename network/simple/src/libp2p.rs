@@ -13,7 +13,7 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Interval;
 use blockchain::chain::SharedBackend;
 use blockchain::traits::{ImportBlock, ChainQuery};
-use crate::network::{BestDepthMessage, BestDepthSync, NetworkEnvironment, NetworkHandle, NetworkEvent};
+use crate::{BestDepthMessage, BestDepthSync, NetworkEnvironment, NetworkHandle, NetworkEvent};
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "(PeerId, BestDepthMessage<B>)", poll_method = "poll")]

@@ -1,0 +1,15 @@
+[package]
+name = "blockchain-network-simple"
+version = "0.1.0"
+authors = ["Wei Tang <hi@that.world>"]
+edition = "2018"
+
+[dependencies]
+blockchain = { version = "0.5", path = "../.." }
+libp2p = "0.7"
+parity-codec = "3.0"
+parity-codec-derive = "3.0"
+futures = "0.1"
+tokio = "0.1"
+tokio-io = "0.1"
+tokio-timer = "0.2"

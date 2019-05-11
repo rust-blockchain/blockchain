@@ -7,7 +7,7 @@ use core::hash::Hash;
 use core::fmt::Debug;
 use blockchain::chain::SharedBackend;
 use blockchain::traits::{ChainQuery, ImportBlock};
-use crate::network::{BestDepthSync, BestDepthMessage, NetworkEnvironment, NetworkHandle, NetworkEvent};
+use crate::{BestDepthSync, BestDepthMessage, NetworkEnvironment, NetworkHandle, NetworkEvent};
 
 pub struct LocalNetwork<P, B> {
 	senders: HashMap<P, SyncSender<(P, BestDepthMessage<B>)>>,

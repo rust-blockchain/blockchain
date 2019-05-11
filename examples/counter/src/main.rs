@@ -2,17 +2,16 @@ extern crate parity_codec as codec;
 extern crate parity_codec_derive as codec_derive;
 
 mod runtime;
-mod network;
 
 use blockchain::backend::{MemoryBackend, KeyValueMemoryState, MemoryLikeBackend};
 use blockchain::chain::{SharedBackend, BlockBuilder};
 use blockchain::traits::{Block as BlockT, ChainQuery};
+use blockchain_network_simple::{BestDepthImporter};
 use std::thread;
 use std::time::Duration;
 use std::collections::HashMap;
 use clap::{App, SubCommand, AppSettings, Arg};
 use crate::runtime::{Block, Executor};
-use crate::network::{BestDepthImporter};
 
 fn main() {
 	let matches = App::new("Blockchain counter demo")
@@ -71,7 +70,7 @@ fn local_sync() {
 		builder_thread(backend_build);
 	});
 
-	network::local::start_local_best_depth_sync(peers);
+	blockchain_network_simple::local::start_local_best_depth_sync(peers);
 }
 
 fn libp2p_sync(port: &str, author: bool) {
@@ -89,7 +88,7 @@ fn libp2p_sync(port: &str, author: bool) {
 			builder_thread(backend_build);
 		});
 	}
-	network::libp2p::start_network_best_depth_sync(port, backend, importer);
+	blockchain_network_simple::libp2p::start_network_best_depth_sync(port, backend, importer);
 }
 
 

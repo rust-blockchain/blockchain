@@ -1,3 +1,6 @@
+extern crate parity_codec as codec;
+extern crate parity_codec_derive as codec_derive;
+
 pub mod local;
 pub mod libp2p;
 

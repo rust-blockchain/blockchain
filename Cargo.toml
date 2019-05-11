@@ -10,5 +10,6 @@ edition = "2018"
 
 [workspace]
 members = [
+	"network/simple",
 	"examples/counter",
 ]
