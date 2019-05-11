@@ -1,69 +1,74 @@
 use core::fmt::Debug;
-use core::hash::Hash;
 use core::marker::PhantomData;
 use core::time::Duration;
 use core::ops::DerefMut;
 use codec::{Encode, Decode};
-use libp2p::{secio, identity, NetworkBehaviour, PeerId};
+use libp2p::{identity, NetworkBehaviour, PeerId};
 use libp2p::mdns::Mdns;
 use libp2p::floodsub::{Floodsub, Topic, TopicBuilder};
 use libp2p::kad::Kademlia;
-use libp2p::core::swarm::NetworkBehaviourEventProcess;
-use futures::{Async, sink::Sink, stream::Stream, sync::mpsc::{UnboundedSender, UnboundedReceiver, unbounded}};
+use libp2p::core::swarm::{NetworkBehaviourEventProcess, NetworkBehaviourAction};
+use futures::{Async, stream::Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Interval;
 use blockchain::chain::SharedBackend;
-use blockchain::traits::{ImportBlock, ChainQuery, Backend};
+use blockchain::traits::{ImportBlock, ChainQuery};
 use crate::network::{BestDepthMessage, BestDepthSync, NetworkEnvironment, NetworkHandle, NetworkEvent};
 
 #[derive(NetworkBehaviour)]
-struct Behaviour<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> {
+#[behaviour(out_event = "(PeerId, BestDepthMessage<B>)", poll_method = "poll")]
+struct Behaviour<TSubstream: AsyncRead + AsyncWrite, B> {
 	floodsub: Floodsub<TSubstream>,
 	kademlia: Kademlia<TSubstream>,
 	mdns: Mdns<TSubstream>,
 
 	#[behaviour(ignore)]
-	sync: Option<BestDepthSync<PeerId, Ba, I>>,
-	#[behaviour(ignore)]
 	topic: Topic,
+	#[behaviour(ignore)]
+	events: Vec<(PeerId, BestDepthMessage<B>)>,
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> NetworkEnvironment for Behaviour<TSubstream, Ba, I> {
+impl<TSubstream: AsyncRead + AsyncWrite, B> Behaviour<TSubstream, B> {
+	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, (PeerId, BestDepthMessage<B>)>> {
+		if !self.events.is_empty() {
+			return Async::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)))
+		}
+
+		Async::NotReady
+	}
+}
+
+impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkEnvironment for Behaviour<TSubstream, B> {
 	type PeerId = PeerId;
-	type Message = BestDepthMessage<Ba::Block>;
+	type Message = BestDepthMessage<B>;
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> NetworkHandle for Behaviour<TSubstream, Ba, I>  where
-	Ba::Block: Encode,
+impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkHandle for Behaviour<TSubstream, B>  where
+	B: Encode,
 {
-	fn send(&mut self, _peer: &PeerId, message: BestDepthMessage<Ba::Block>) {
+	fn send(&mut self, _peer: &PeerId, message: BestDepthMessage<B>) {
 		self.floodsub.publish(&self.topic, message.encode());
 	}
 
-	fn broadcast(&mut self, message: BestDepthMessage<Ba::Block>) {
+	fn broadcast(&mut self, message: BestDepthMessage<B>) {
 		self.floodsub.publish(&self.topic, message.encode());
 	}
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> NetworkBehaviourEventProcess<libp2p::floodsub::FloodsubEvent> for Behaviour<TSubstream, Ba, I> where
-	I: ImportBlock<Block=Ba::Block>,
-	Ba: ChainQuery,
-	Ba::Block: Encode + Decode + Debug
+impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p::floodsub::FloodsubEvent> for Behaviour<TSubstream, B> where
+	B: Encode + Decode + Debug
 {
 	fn inject_event(&mut self, floodsub_message: libp2p::floodsub::FloodsubEvent) {
 		if let libp2p::floodsub::FloodsubEvent::Message(floodsub_message) = floodsub_message {
-			let message = BestDepthMessage::<Ba::Block>::decode(&mut &floodsub_message.data[..]).unwrap();
-			println!("Received: {:?} from {:?}", message, floodsub_message.source);
+			let message = BestDepthMessage::<B>::decode(&mut &floodsub_message.data[..]).unwrap();
 
-			let mut sync = self.sync.take().expect("Sync is initialized to Some");
-			sync.on_message(self, &floodsub_message.source, message);
-			self.sync.replace(sync);
+			self.events.push((floodsub_message.source.clone(), message));
 		}
 	}
 }
 
 
-impl<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> NetworkBehaviourEventProcess<libp2p::kad::KademliaOut> for Behaviour<TSubstream, Ba, I> {
+impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p::kad::KademliaOut> for Behaviour<TSubstream, B> {
 	fn inject_event(&mut self, message: libp2p::kad::KademliaOut) {
 		if let libp2p::kad::KademliaOut::Discovered { peer_id, .. } = message {
 			println!("Discovered via Kademlia {:?}", peer_id);
@@ -72,7 +77,7 @@ impl<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> NetworkBehaviourEventPr
 	}
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, Ba: Backend, I> NetworkBehaviourEventProcess<libp2p::mdns::MdnsEvent> for Behaviour<TSubstream, Ba, I> {
+impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p::mdns::MdnsEvent> for Behaviour<TSubstream, B> {
     fn inject_event(&mut self, event: libp2p::mdns::MdnsEvent) {
         match event {
             libp2p::mdns::MdnsEvent::Discovered(list) => {
@@ -119,8 +124,8 @@ pub fn start_network_best_depth_sync<Ba, I>(
 			kademlia: Kademlia::new(local_peer_id.clone()),
 			mdns: libp2p::mdns::Mdns::new().expect("Failed to create mDNS service"),
 
-			sync: Some(sync),
 			topic: topic.clone(),
+			events: Vec::new(),
 		};
 
 		assert!(behaviour.floodsub.subscribe(topic.clone()));
@@ -137,10 +142,7 @@ pub fn start_network_best_depth_sync<Ba, I>(
         loop {
             match interval.poll().expect("Error while polling interval") {
                 Async::Ready(Some(_)) => {
-					let behaviour = swarm.deref_mut();
-					let mut sync = behaviour.sync.take().unwrap();
-					sync.on_tick(behaviour);
-					behaviour.sync.replace(sync);
+					sync.on_tick(swarm.deref_mut());
 				},
                 Async::Ready(None) => panic!("Interval closed"),
                 Async::NotReady => break,
@@ -149,7 +151,10 @@ pub fn start_network_best_depth_sync<Ba, I>(
 
         loop {
             match swarm.poll().expect("Error while polling swarm") {
-                Async::Ready(Some(_)) => (),
+                Async::Ready(Some((peer_id, message))) => {
+					println!("Received: {:?} from {:?}", message, peer_id);
+					sync.on_message(swarm.deref_mut(), &peer_id, message);
+				},
                 Async::Ready(None) | Async::NotReady => {
                     if !listening {
                         if let Some(a) = libp2p::Swarm::listeners(&swarm).next() {
