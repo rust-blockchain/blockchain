@@ -2,6 +2,8 @@
 name = "blockchain-network-simple"
 version = "0.1.0"
 authors = ["Wei Tang <hi@that.world>"]
+description = "Simple network interface for blockchain"
+license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]
