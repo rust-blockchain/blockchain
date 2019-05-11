@@ -5,9 +5,65 @@ pub mod local;
 pub mod libp2p;
 
 use core::marker::PhantomData;
+use core::cmp::Ordering;
+use codec::{Encode, Decode};
 use codec_derive::{Encode, Decode};
 use blockchain::chain::SharedBackend;
 use blockchain::traits::{Backend, ChainQuery, ImportBlock, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
+
+pub trait StatusProducer {
+	type Status: Ord + Encode + Decode;
+
+	fn generate(&self) -> Self::Status;
+}
+
+#[derive(Eq, Clone, Encode, Decode, Debug)]
+pub struct BestDepthStatus {
+	pub best_depth: usize,
+}
+
+impl Ord for BestDepthStatus {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.best_depth.cmp(&other.best_depth)
+	}
+}
+
+impl PartialOrd for BestDepthStatus {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl PartialEq for BestDepthStatus {
+	fn eq(&self, other: &Self) -> bool {
+		self == other
+	}
+}
+
+pub struct BestDepthStatusProducer<Ba: Backend> {
+	backend: SharedBackend<Ba>,
+}
+
+impl<Ba: Backend> BestDepthStatusProducer<Ba> {
+	pub fn new(backend: SharedBackend<Ba>) -> Self {
+		Self { backend }
+	}
+}
+
+impl<Ba: ChainQuery> StatusProducer for BestDepthStatusProducer<Ba> {
+	type Status = BestDepthStatus;
+
+	fn generate(&self) -> BestDepthStatus {
+		let best_depth = {
+			let backend = self.backend.read();
+			let best_hash = backend.head();
+			backend.depth_at(&best_hash)
+				.expect("Best block depth hash cannot fail")
+		};
+
+		BestDepthStatus { best_depth }
+	}
+}
 
 pub trait NetworkEnvironment {
 	type PeerId;
@@ -28,10 +84,8 @@ pub trait NetworkEvent: NetworkEnvironment {
 }
 
 #[derive(Clone, Debug, Encode, Decode)]
-pub enum BestDepthMessage<B> {
-	Status {
-		best_depth: usize,
-	},
+pub enum SimpleSyncMessage<B, S> {
+	Status(S),
 	BlockRequest {
 		start_depth: usize,
 		count: usize,
@@ -41,42 +95,36 @@ pub enum BestDepthMessage<B> {
 	},
 }
 
-pub struct BestDepthSync<P, Ba: Backend, I> {
+pub struct SimpleSync<P, Ba: Backend, I, St> {
 	backend: SharedBackend<Ba>,
 	importer: I,
+	status: St,
 	_marker: PhantomData<P>,
 }
 
-impl<P, Ba: Backend, I> NetworkEnvironment for BestDepthSync<P, Ba, I> {
+impl<P, Ba: Backend, I, St: StatusProducer> NetworkEnvironment for SimpleSync<P, Ba, I, St> {
 	type PeerId = P;
-	type Message = BestDepthMessage<Ba::Block>;
+	type Message = SimpleSyncMessage<Ba::Block, St::Status>;
 }
 
-impl<P, Ba: ChainQuery, I: ImportBlock<Block=Ba::Block>> NetworkEvent for BestDepthSync<P, Ba, I> {
+impl<P, Ba: ChainQuery, I: ImportBlock<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
 	fn on_tick<H: NetworkHandle>(
 		&mut self, handle: &mut H
 	) where
 		H: NetworkEnvironment<PeerId=Self::PeerId, Message=Self::Message>
 	{
-		let best_depth = {
-			let backend = self.backend.read();
-			let best_hash = backend.head();
-			backend.depth_at(&best_hash)
-				.expect("Best block depth hash cannot fail")
-		};
-
-		handle.broadcast(BestDepthMessage::Status { best_depth });
+		let status = self.status.generate();
+		handle.broadcast(SimpleSyncMessage::Status(status));
 	}
 
 	fn on_message<H: NetworkHandle>(
-		&mut self, handle: &mut H, peer: &P, message: BestDepthMessage<Ba::Block>
+		&mut self, handle: &mut H, peer: &P, message: Self::Message
 	) where
 		H: NetworkEnvironment<PeerId=Self::PeerId, Message=Self::Message>
 	{
 		match message {
-			BestDepthMessage::Status {
-				best_depth: peer_best_depth
-			} => {
+			SimpleSyncMessage::Status(peer_status) => {
+				let status = self.status.generate();
 				let best_depth = {
 					let backend = self.backend.read();
 					let best_hash = backend.head();
@@ -84,14 +132,14 @@ impl<P, Ba: ChainQuery, I: ImportBlock<Block=Ba::Block>> NetworkEvent for BestDe
 						.expect("Best block depth hash cannot fail")
 				};
 
-				if peer_best_depth > best_depth {
-					handle.send(peer, BestDepthMessage::BlockRequest {
+				if peer_status > status {
+					handle.send(peer, SimpleSyncMessage::BlockRequest {
 						start_depth: best_depth + 1,
-						count: peer_best_depth - best_depth,
+						count: 256,
 					});
 				}
 			},
-			BestDepthMessage::BlockRequest {
+			SimpleSyncMessage::BlockRequest {
 				start_depth,
 				count,
 			} => {
@@ -112,11 +160,11 @@ impl<P, Ba: ChainQuery, I: ImportBlock<Block=Ba::Block>> NetworkEvent for BestDe
 						}
 					}
 				}
-				handle.send(peer, BestDepthMessage::BlockResponse {
+				handle.send(peer, SimpleSyncMessage::BlockResponse {
 					blocks: ret
 				});
 			},
-			BestDepthMessage::BlockResponse {
+			SimpleSyncMessage::BlockResponse {
 				blocks,
 			} => {
 				for block in blocks {

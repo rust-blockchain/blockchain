@@ -6,7 +6,7 @@ mod runtime;
 use blockchain::backend::{MemoryBackend, KeyValueMemoryState, MemoryLikeBackend};
 use blockchain::chain::{SharedBackend, BlockBuilder};
 use blockchain::traits::{Block as BlockT, ChainQuery};
-use blockchain_network_simple::{BestDepthImporter};
+use blockchain_network_simple::{BestDepthImporter, BestDepthStatusProducer};
 use std::thread;
 use std::time::Duration;
 use std::collections::HashMap;
@@ -64,7 +64,8 @@ fn local_sync() {
 			)
 		};
 		let importer = BestDepthImporter::new(Executor, backend.clone());
-		peers.insert(peer_id, (backend, importer));
+		let status = BestDepthStatusProducer::new(backend.clone());
+		peers.insert(peer_id, (backend, importer, status));
 	}
 	thread::spawn(move || {
 		builder_thread(backend_build);
@@ -82,13 +83,14 @@ fn libp2p_sync(port: &str, author: bool) {
 		)
 	);
 	let importer = BestDepthImporter::new(Executor, backend.clone());
+	let status = BestDepthStatusProducer::new(backend.clone());
 	if author {
 		let backend_build = backend.clone();
 		thread::spawn(move || {
 			builder_thread(backend_build);
 		});
 	}
-	blockchain_network_simple::libp2p::start_network_best_depth_sync(port, backend, importer);
+	blockchain_network_simple::libp2p::start_network_best_depth_sync(port, backend, importer, status);
 }
 
 

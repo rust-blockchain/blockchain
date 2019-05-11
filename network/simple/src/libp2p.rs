@@ -13,11 +13,11 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Interval;
 use blockchain::chain::SharedBackend;
 use blockchain::traits::{ImportBlock, ChainQuery};
-use crate::{BestDepthMessage, BestDepthSync, NetworkEnvironment, NetworkHandle, NetworkEvent};
+use crate::{SimpleSyncMessage, SimpleSync, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "(PeerId, BestDepthMessage<B>)", poll_method = "poll")]
-struct Behaviour<TSubstream: AsyncRead + AsyncWrite, B> {
+#[behaviour(out_event = "(PeerId, SimpleSyncMessage<B, S>)", poll_method = "poll")]
+struct Behaviour<TSubstream: AsyncRead + AsyncWrite, B, S> {
 	floodsub: Floodsub<TSubstream>,
 	kademlia: Kademlia<TSubstream>,
 	mdns: Mdns<TSubstream>,
@@ -25,11 +25,11 @@ struct Behaviour<TSubstream: AsyncRead + AsyncWrite, B> {
 	#[behaviour(ignore)]
 	topic: Topic,
 	#[behaviour(ignore)]
-	events: Vec<(PeerId, BestDepthMessage<B>)>,
+	events: Vec<(PeerId, SimpleSyncMessage<B, S>)>,
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, B> Behaviour<TSubstream, B> {
-	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, (PeerId, BestDepthMessage<B>)>> {
+impl<TSubstream: AsyncRead + AsyncWrite, B, S> Behaviour<TSubstream, B, S> {
+	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, (PeerId, SimpleSyncMessage<B, S>)>> {
 		if !self.events.is_empty() {
 			return Async::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)))
 		}
@@ -38,29 +38,31 @@ impl<TSubstream: AsyncRead + AsyncWrite, B> Behaviour<TSubstream, B> {
 	}
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkEnvironment for Behaviour<TSubstream, B> {
+impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkEnvironment for Behaviour<TSubstream, B, S> {
 	type PeerId = PeerId;
-	type Message = BestDepthMessage<B>;
+	type Message = SimpleSyncMessage<B, S>;
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkHandle for Behaviour<TSubstream, B>  where
+impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkHandle for Behaviour<TSubstream, B, S>  where
 	B: Encode,
+	S: Encode,
 {
-	fn send(&mut self, _peer: &PeerId, message: BestDepthMessage<B>) {
+	fn send(&mut self, _peer: &PeerId, message: SimpleSyncMessage<B, S>) {
 		self.floodsub.publish(&self.topic, message.encode());
 	}
 
-	fn broadcast(&mut self, message: BestDepthMessage<B>) {
+	fn broadcast(&mut self, message: SimpleSyncMessage<B, S>) {
 		self.floodsub.publish(&self.topic, message.encode());
 	}
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p::floodsub::FloodsubEvent> for Behaviour<TSubstream, B> where
-	B: Encode + Decode + Debug
+impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkBehaviourEventProcess<libp2p::floodsub::FloodsubEvent> for Behaviour<TSubstream, B, S> where
+	B: Encode + Decode + Debug,
+	S: Encode + Decode + Debug,
 {
 	fn inject_event(&mut self, floodsub_message: libp2p::floodsub::FloodsubEvent) {
 		if let libp2p::floodsub::FloodsubEvent::Message(floodsub_message) = floodsub_message {
-			let message = BestDepthMessage::<B>::decode(&mut &floodsub_message.data[..]).unwrap();
+			let message = SimpleSyncMessage::<B, S>::decode(&mut &floodsub_message.data[..]).unwrap();
 
 			self.events.push((floodsub_message.source.clone(), message));
 		}
@@ -68,7 +70,7 @@ impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p:
 }
 
 
-impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p::kad::KademliaOut> for Behaviour<TSubstream, B> {
+impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkBehaviourEventProcess<libp2p::kad::KademliaOut> for Behaviour<TSubstream, B, S> {
 	fn inject_event(&mut self, message: libp2p::kad::KademliaOut) {
 		if let libp2p::kad::KademliaOut::Discovered { peer_id, .. } = message {
 			println!("Discovered via Kademlia {:?}", peer_id);
@@ -77,7 +79,7 @@ impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p:
 	}
 }
 
-impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p::mdns::MdnsEvent> for Behaviour<TSubstream, B> {
+impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkBehaviourEventProcess<libp2p::mdns::MdnsEvent> for Behaviour<TSubstream, B, S> {
     fn inject_event(&mut self, event: libp2p::mdns::MdnsEvent) {
         match event {
             libp2p::mdns::MdnsEvent::Discovered(list) => {
@@ -96,14 +98,17 @@ impl<TSubstream: AsyncRead + AsyncWrite, B> NetworkBehaviourEventProcess<libp2p:
     }
 }
 
-pub fn start_network_best_depth_sync<Ba, I>(
+pub fn start_network_best_depth_sync<Ba, I, St>(
 	port: &str,
 	backend: SharedBackend<Ba>,
 	importer: I,
+	status: St,
 ) where
 	Ba: ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Encode + Decode + Send + Sync,
 	I: ImportBlock<Block=Ba::Block> + Send + Sync + 'static,
+	St: StatusProducer + Send + Sync + 'static,
+	St::Status: Debug + Clone + Send + Sync,
 {
     // Create a random PeerId
     let local_key = identity::Keypair::generate_ed25519();
@@ -113,8 +118,8 @@ pub fn start_network_best_depth_sync<Ba, I>(
 	let transport = libp2p::build_tcp_ws_secio_mplex_yamux(local_key);
 	let topic = TopicBuilder::new("blocks").build();
 
-	let mut sync = BestDepthSync {
-		backend, importer,
+	let mut sync = SimpleSync {
+		backend, importer, status,
 		_marker: PhantomData,
 	};
 
