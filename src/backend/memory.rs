@@ -33,19 +33,31 @@ impl stderror::Error for Error { }
 
 /// State stored in memory.
 #[derive(Clone, Default)]
-pub struct MemoryState {
+pub struct KeyValueMemoryState {
 	storage: HashMap<Vec<u8>, Vec<u8>>,
 }
 
-impl NullExternalities for MemoryState { }
+impl AsRef<HashMap<Vec<u8>, Vec<u8>>> for KeyValueMemoryState {
+	fn as_ref(&self) -> &HashMap<Vec<u8>, Vec<u8>> {
+		&self.storage
+	}
+}
 
-impl AsExternalities<dyn NullExternalities> for MemoryState {
+impl AsMut<HashMap<Vec<u8>, Vec<u8>>> for KeyValueMemoryState {
+	fn as_mut(&mut self) -> &mut HashMap<Vec<u8>, Vec<u8>> {
+		&mut self.storage
+	}
+}
+
+impl NullExternalities for KeyValueMemoryState { }
+
+impl AsExternalities<dyn NullExternalities> for KeyValueMemoryState {
 	fn as_externalities(&mut self) -> &mut (dyn NullExternalities + 'static) {
 		self
 	}
 }
 
-impl StorageExternalities for MemoryState {
+impl StorageExternalities for KeyValueMemoryState {
 	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<std::error::Error>> {
 		Ok(self.storage.get(key).map(|value| value.to_vec()))
 	}
@@ -59,32 +71,32 @@ impl StorageExternalities for MemoryState {
 	}
 }
 
-impl AsExternalities<dyn StorageExternalities> for MemoryState {
+impl AsExternalities<dyn StorageExternalities> for KeyValueMemoryState {
 	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities + 'static) {
 		self
 	}
 }
 
-struct BlockData<B: Block> {
+struct BlockData<B: Block, S> {
 	block: B,
-	state: MemoryState,
+	state: S,
 	depth: usize,
 	children: Vec<B::Identifier>,
 	is_canon: bool,
 }
 
 /// Memory backend.
-pub struct MemoryBackend<B: Block, A: Auxiliary<B>> {
-	blocks_and_states: HashMap<B::Identifier, BlockData<B>>,
+pub struct MemoryBackend<B: Block, A: Auxiliary<B>, S> {
+	blocks_and_states: HashMap<B::Identifier, BlockData<B, S>>,
 	head: B::Identifier,
 	genesis: B::Identifier,
 	canon_depth_mappings: HashMap<usize, B::Identifier>,
 	auxiliaries: HashMap<A::Key, A>,
 }
 
-impl<B: Block, A: Auxiliary<B>> Backend for MemoryBackend<B, A> {
+impl<B: Block, A: Auxiliary<B>, S: Clone> Backend for MemoryBackend<B, A, S> {
 	type Block = B;
-	type State = MemoryState;
+	type State = S;
 	type Auxiliary = A;
 	type Error = Error;
 
@@ -93,7 +105,7 @@ impl<B: Block, A: Auxiliary<B>> Backend for MemoryBackend<B, A> {
 		operation: Operation<B, Self::State, A>,
 	) -> Result<(), Error> {
 		let mut parent_ides = HashMap::new();
-		let mut importing: HashMap<B::Identifier, BlockData<B>> = HashMap::new();
+		let mut importing: HashMap<B::Identifier, BlockData<B, S>> = HashMap::new();
 		let mut verifying = operation.import_block;
 
 		// Do precheck to make sure the import operation is valid.
@@ -206,7 +218,7 @@ impl<B: Block, A: Auxiliary<B>> Backend for MemoryBackend<B, A> {
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>> ChainQuery for MemoryBackend<B, A> {
+impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryBackend<B, A, S> {
 	fn head(&self) -> B::Identifier {
 		self.head
 	}
@@ -276,22 +288,19 @@ impl<B: Block, A: Auxiliary<B>> ChainQuery for MemoryBackend<B, A> {
 	fn state_at(
 		&self,
 		id: &B::Identifier,
-	) -> Result<MemoryState, Error> {
+	) -> Result<Self::State, Error> {
 		self.blocks_and_states.get(id)
 			.map(|data| data.state.clone())
 			.ok_or(Error::NotExist)
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>> MemoryBackend<B, A> {
+impl<B: Block, A: Auxiliary<B>, S> MemoryBackend<B, A, S> {
 	/// Create a new memory backend from a genesis block.
-	pub fn with_genesis(block: B, genesis_storage: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+	pub fn with_genesis(block: B, genesis_state: S) -> Self {
 		assert!(block.parent_id().is_none(), "with_genesis must be provided with a genesis block");
 
 		let genesis_id = block.id();
-		let genesis_state = MemoryState {
-			storage: genesis_storage,
-		};
 		let mut blocks_and_states = HashMap::new();
 		blocks_and_states.insert(
 			block.id(),
@@ -363,7 +372,7 @@ mod tests {
 
 	#[test]
 	fn all_traits_for_importer_are_satisfied() {
-		let backend = MemoryBackend::<_, ()>::with_genesis(
+		let backend = MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
 			DummyBlock {
 				id: 1,
 				parent_id: 0,

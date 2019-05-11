@@ -4,7 +4,7 @@ extern crate parity_codec_derive as codec_derive;
 mod runtime;
 mod network;
 
-use blockchain::backend::MemoryBackend;
+use blockchain::backend::{MemoryBackend, KeyValueMemoryState};
 use blockchain::chain::{SharedBackend, BlockBuilder};
 use blockchain::traits::{Block as BlockT, ChainQuery};
 use std::thread;
@@ -47,7 +47,10 @@ fn main() {
 fn local_sync() {
 	let genesis_block = Block::genesis();
 	let backend_build = SharedBackend::new(
-		MemoryBackend::<_, ()>::with_genesis(genesis_block.clone(), Default::default())
+		MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+			genesis_block.clone(),
+			Default::default()
+		)
 	);
 	let mut peers = HashMap::new();
 	for peer_id in 0..4 {
@@ -55,7 +58,10 @@ fn local_sync() {
 			backend_build.clone()
 		} else {
 			SharedBackend::new(
-				MemoryBackend::<_, ()>::with_genesis(genesis_block.clone(), Default::default())
+				MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+					genesis_block.clone(),
+					Default::default()
+				)
 			)
 		};
 		let importer = BestDepthImporter::new(Executor, backend.clone());
@@ -71,7 +77,10 @@ fn local_sync() {
 fn libp2p_sync(port: &str, author: bool) {
 	let genesis_block = Block::genesis();
 	let backend = SharedBackend::new(
-		MemoryBackend::<_, ()>::with_genesis(genesis_block.clone(), Default::default())
+		MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+			genesis_block.clone(),
+			Default::default()
+		)
 	);
 	let importer = BestDepthImporter::new(Executor, backend.clone());
 	if author {
@@ -84,7 +93,7 @@ fn libp2p_sync(port: &str, author: bool) {
 }
 
 
-fn builder_thread(backend_build: SharedBackend<MemoryBackend<Block, ()>>) {
+fn builder_thread(backend_build: SharedBackend<MemoryBackend<Block, (), KeyValueMemoryState>>) {
 	loop {
 		thread::sleep(Duration::from_secs(5));
 
