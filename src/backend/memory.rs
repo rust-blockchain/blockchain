@@ -8,6 +8,17 @@ use crate::traits::{
 };
 use super::tree_route;
 
+/// A backend type that stores all information in memory.
+pub trait MemoryLikeBackend {
+	/// Block type.
+	type Block;
+	/// State type.
+	type State;
+
+	/// Create a new memory backend from a genesis block.
+	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self;
+}
+
 #[derive(Debug)]
 pub enum Error {
 	IO,
@@ -295,9 +306,11 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryBackend<B, A, S> 
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>, S> MemoryBackend<B, A, S> {
-	/// Create a new memory backend from a genesis block.
-	pub fn with_genesis(block: B, genesis_state: S) -> Self {
+impl<B: Block, A: Auxiliary<B>, S> MemoryLikeBackend for MemoryBackend<B, A, S> {
+	type Block = B;
+	type State = S;
+
+	fn new_with_genesis(block: B, genesis_state: S) -> Self {
 		assert!(block.parent_id().is_none(), "with_genesis must be provided with a genesis block");
 
 		let genesis_id = block.id();
@@ -372,7 +385,7 @@ mod tests {
 
 	#[test]
 	fn all_traits_for_importer_are_satisfied() {
-		let backend = MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+		let backend = MemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
 			DummyBlock {
 				id: 1,
 				parent_id: 0,

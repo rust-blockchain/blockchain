@@ -4,7 +4,7 @@ extern crate parity_codec_derive as codec_derive;
 mod runtime;
 mod network;
 
-use blockchain::backend::{MemoryBackend, KeyValueMemoryState};
+use blockchain::backend::{MemoryBackend, KeyValueMemoryState, MemoryLikeBackend};
 use blockchain::chain::{SharedBackend, BlockBuilder};
 use blockchain::traits::{Block as BlockT, ChainQuery};
 use std::thread;
@@ -47,7 +47,7 @@ fn main() {
 fn local_sync() {
 	let genesis_block = Block::genesis();
 	let backend_build = SharedBackend::new(
-		MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+		MemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
 			genesis_block.clone(),
 			Default::default()
 		)
@@ -58,7 +58,7 @@ fn local_sync() {
 			backend_build.clone()
 		} else {
 			SharedBackend::new(
-				MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+				MemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
 					genesis_block.clone(),
 					Default::default()
 				)
@@ -77,7 +77,7 @@ fn local_sync() {
 fn libp2p_sync(port: &str, author: bool) {
 	let genesis_block = Block::genesis();
 	let backend = SharedBackend::new(
-		MemoryBackend::<_, (), KeyValueMemoryState>::with_genesis(
+		MemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
 			genesis_block.clone(),
 			Default::default()
 		)
