@@ -4,7 +4,6 @@ use blockchain::traits::{
 	BuilderExecutor, StorageExternalities,
 };
 use codec::{Encode, Decode};
-use codec_derive::{Decode, Encode};
 use sha3::{Digest, Sha3_256};
 
 const DIFFICULTY: usize = 2;

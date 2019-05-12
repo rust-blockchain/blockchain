@@ -1,5 +1,4 @@
 extern crate parity_codec as codec;
-extern crate parity_codec_derive as codec_derive;
 
 pub mod local;
 pub mod libp2p;
@@ -7,7 +6,6 @@ pub mod libp2p;
 use core::marker::PhantomData;
 use core::cmp::Ordering;
 use codec::{Encode, Decode};
-use codec_derive::{Encode, Decode};
 use blockchain::chain::SharedBackend;
 use blockchain::traits::{Backend, ChainQuery, ImportBlock, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
