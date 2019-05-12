@@ -121,57 +121,57 @@ pub trait Backend {
 /// Chain query interface for a backend.
 pub trait ChainQuery: Backend {
 	/// Get the genesis hash of the chain.
-	fn genesis(&self) -> <<Self as Backend>::Block as Block>::Identifier;
+	fn genesis(&self) -> <Self::Block as Block>::Identifier;
 	/// Get the head of the chain.
-	fn head(&self) -> <<Self as Backend>::Block as Block>::Identifier;
+	fn head(&self) -> <Self::Block as Block>::Identifier;
 
 	/// Check whether a hash is contained in the chain.
 	fn contains(
 		&self,
-		hash: &<<Self as Backend>::Block as Block>::Identifier,
-	) -> Result<bool, <Self as Backend>::Error>;
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<bool, Self::Error>;
 
 	/// Check whether a block is canonical.
 	fn is_canon(
 		&self,
-		hash: &<<Self as Backend>::Block as Block>::Identifier,
+		hash: &<Self::Block as Block>::Identifier,
 	) -> Result<bool, Self::Error>;
 
 	/// Look up a canonical block via its depth.
 	fn lookup_canon_depth(
 		&self,
 		depth: usize,
-	) -> Result<Option<<<Self as Backend>::Block as Block>::Identifier>, <Self as Backend>::Error>;
+	) -> Result<Option<<Self::Block as Block>::Identifier>, Self::Error>;
 
 	/// Get the auxiliary value by key.
 	fn auxiliary(
 		&self,
-		key: &<<Self as Backend>::Auxiliary as Auxiliary<Self::Block>>::Key,
-	) -> Result<Option<<Self as Backend>::Auxiliary>, <Self as Backend>::Error>;
+		key: &<Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+	) -> Result<Option<Self::Auxiliary>, Self::Error>;
 
 	/// Get the depth of a block.
 	fn depth_at(
 		&self,
-		hash: &<<Self as Backend>::Block as Block>::Identifier,
-	) -> Result<usize, <Self as Backend>::Error>;
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<usize, Self::Error>;
 
 	/// Get children of a block.
 	fn children_at(
 		&self,
-		hash: &<<Self as Backend>::Block as Block>::Identifier,
-	) -> Result<Vec<<<Self as Backend>::Block as Block>::Identifier>, <Self as Backend>::Error>;
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Vec<<Self::Block as Block>::Identifier>, Self::Error>;
 
 	/// Get the state object of a block.
 	fn state_at(
 		&self,
-		hash: &<<Self as Backend>::Block as Block>::Identifier,
-	) -> Result<<Self as Backend>::State, <Self as Backend>::Error>;
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Self::State, Self::Error>;
 
 	/// Get the object of a block.
 	fn block_at(
 		&self,
-		hash: &<<Self as Backend>::Block as Block>::Identifier,
-	) -> Result<<Self as Backend>::Block, <Self as Backend>::Error>;
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Self::Block, Self::Error>;
 }
 
 /// Trait used for committing block, usually built on top of a backend.
