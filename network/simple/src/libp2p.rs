@@ -98,7 +98,7 @@ impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkBehaviourEventProcess<libp
     }
 }
 
-pub fn start_network_best_depth_sync<Ba, I, St>(
+pub fn start_network_simple_sync<Ba, I, St>(
 	port: &str,
 	backend: SharedBackend<Ba>,
 	importer: I,

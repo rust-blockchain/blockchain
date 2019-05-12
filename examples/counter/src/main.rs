@@ -70,7 +70,7 @@ fn local_sync() {
 		builder_thread(backend_build);
 	});
 
-	blockchain_network_simple::local::start_local_best_depth_sync(peers);
+	blockchain_network_simple::local::start_local_simple_sync(peers);
 }
 
 fn libp2p_sync(port: &str, author: bool) {
@@ -89,7 +89,7 @@ fn libp2p_sync(port: &str, author: bool) {
 			builder_thread(backend_build);
 		});
 	}
-	blockchain_network_simple::libp2p::start_network_best_depth_sync(port, backend, importer, status);
+	blockchain_network_simple::libp2p::start_network_simple_sync(port, backend, importer, status);
 }
 
 

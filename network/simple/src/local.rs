@@ -47,7 +47,7 @@ impl<P: Eq + Hash + Clone, B: Clone, S: Clone> NetworkHandle for LocalNetworkHan
 	}
 }
 
-pub fn start_local_best_depth_peer<P, Ba, I, St>(
+pub fn start_local_simple_peer<P, Ba, I, St>(
 	mut handle: LocalNetworkHandle<P, Ba::Block, St::Status>,
 	receiver: Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>,
 	peer_id: P,
@@ -83,7 +83,7 @@ pub fn start_local_best_depth_peer<P, Ba, I, St>(
 	})
 }
 
-pub fn start_local_best_depth_sync<P, Ba, I, St>(
+pub fn start_local_simple_sync<P, Ba, I, St>(
 	peers: HashMap<P, (SharedBackend<Ba>, I, St)>
 ) where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
@@ -104,7 +104,7 @@ pub fn start_local_best_depth_sync<P, Ba, I, St>(
 	let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
 	let network = Arc::new(LocalNetwork { senders });
 	for (peer_id, (backend, importer, status, receiver)) in peers_with_receivers {
-		let join_handle = start_local_best_depth_peer(
+		let join_handle = start_local_simple_peer(
 			LocalNetworkHandle {
 				peer_id: peer_id.clone(),
 				network: network.clone(),
