@@ -23,14 +23,7 @@ pub enum Error {
 
 impl fmt::Display for Error {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			Error::Backend(_) => "Backend failure".fmt(f)?,
-			Error::Executor(_) => "Executor failure".fmt(f)?,
-			Error::IsGenesis => "Block is genesis block and cannot be imported".fmt(f)?,
-			Error::ParentNotFound => "Parent block cannot be found".fmt(f)?,
-		}
-
-		Ok(())
+		write!(f, "{:?}", self)
 	}
 }
 

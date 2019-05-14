@@ -8,34 +8,36 @@ use crate::traits::{
 };
 use super::tree_route;
 
-/// A backend type that stores all information in memory.
-pub trait MemoryLikeBackend: Backend {
-	/// Create a new memory backend from a genesis block.
-	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self;
-}
-
 #[derive(Debug)]
+/// Memory errors
 pub enum Error {
-	IO,
+	/// Invalid operation.
 	InvalidOperation,
+	/// Trying to import a block that is genesis.
 	ImportingGenesis,
+	/// Block trying to query does not exist in the backend.
 	NotExist,
 }
 
 impl fmt::Display for Error {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			Error::IO => "IO failure".fmt(f)?,
-			Error::InvalidOperation => "The operation provided is invalid".fmt(f)?,
-			Error::NotExist => "Block does not exist".fmt(f)?,
-			Error::ImportingGenesis => "Trying to import another genesis".fmt(f)?,
-		}
-
-		Ok(())
+		write!(f, "{:?}", self)
 	}
 }
 
 impl stderror::Error for Error { }
+
+impl Into<crate::chain::Error> for Error {
+	fn into(self) -> crate::chain::Error {
+		crate::chain::Error::Backend(Box::new(self))
+	}
+}
+
+/// A backend type that stores all information in memory.
+pub trait MemoryLikeBackend: Backend {
+	/// Create a new memory backend from a genesis block.
+	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self;
+}
 
 /// State stored in memory.
 #[derive(Clone, Default)]
