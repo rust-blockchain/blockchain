@@ -61,8 +61,11 @@ pub trait NullExternalities { }
 
 /// Externalities for reading a key value based storage.
 pub trait StorageExternalities {
+	/// Error type for storage externalities.
+	type Error: stderror::Error + 'static;
+
 	/// Read storage value.
-	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<std::error::Error>>;
+	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
 	/// Write storage value.
 	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>);
 	/// Remove storage value.

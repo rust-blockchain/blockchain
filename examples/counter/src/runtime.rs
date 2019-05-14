@@ -5,6 +5,7 @@ use blockchain::traits::{
 };
 use codec::{Encode, Decode};
 use sha3::{Digest, Sha3_256};
+use std::convert::Infallible;
 
 const DIFFICULTY: usize = 2;
 
@@ -95,7 +96,7 @@ pub struct Executor;
 impl Executor {
 	fn read_counter(&self, state: &mut <Self as BlockExecutor>::Externalities) -> Result<u128, Error> {
 		Ok(
-			match state.read_storage(b"counter").map_err(|e| Error::Backend(e))? {
+			match state.read_storage(b"counter").expect("Error is infallible; qed") {
 				Some(counter) => {
 					u128::decode(&mut counter.as_slice()).ok_or(Error::StateCorruption)?
 				},
@@ -112,7 +113,7 @@ impl Executor {
 impl BlockExecutor for Executor {
 	type Error = Error;
 	type Block = Block;
-	type Externalities = dyn StorageExternalities + 'static;
+	type Externalities = dyn StorageExternalities<Error=Infallible> + 'static;
 
 	fn execute_block(
 		&self,
@@ -141,7 +142,7 @@ impl BuilderExecutor for Executor {
 	type Error = Error;
 	type Block = Block;
 	type BuildBlock = UnsealedBlock;
-	type Externalities = dyn StorageExternalities + 'static;
+	type Externalities = dyn StorageExternalities<Error=Infallible> + 'static;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();
 

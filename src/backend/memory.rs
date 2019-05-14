@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::{fmt, error as stderror};
+use std::convert::Infallible;
 
 use crate::traits::{
 	AsExternalities, Backend, NullExternalities,
@@ -66,7 +67,9 @@ impl AsExternalities<dyn NullExternalities> for KeyValueMemoryState {
 }
 
 impl StorageExternalities for KeyValueMemoryState {
-	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<std::error::Error>> {
+	type Error = Infallible;
+
+	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Infallible> {
 		Ok(self.storage.get(key).map(|value| value.to_vec()))
 	}
 
@@ -79,8 +82,8 @@ impl StorageExternalities for KeyValueMemoryState {
 	}
 }
 
-impl AsExternalities<dyn StorageExternalities> for KeyValueMemoryState {
-	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities + 'static) {
+impl AsExternalities<dyn StorageExternalities<Error=Infallible>> for KeyValueMemoryState {
+	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Error=Infallible> + 'static) {
 		self
 	}
 }
@@ -337,6 +340,7 @@ mod tests {
 	use super::*;
 	use crate::traits::*;
 	use crate::chain::SharedBackend;
+	use std::convert::Infallible;
 
 	#[derive(Clone)]
 	pub struct DummyBlock {
@@ -351,9 +355,9 @@ mod tests {
 		fn parent_id(&self) -> Option<usize> { if self.parent_id == 0 { None } else { Some(self.parent_id) } }
 	}
 
-	pub trait CombinedExternalities: NullExternalities + StorageExternalities { }
+	pub trait CombinedExternalities: NullExternalities + StorageExternalities<Error=Infallible> { }
 
-	impl<T: NullExternalities + StorageExternalities> CombinedExternalities for T { }
+	impl<T: NullExternalities + StorageExternalities<Error=Infallible>> CombinedExternalities for T { }
 
 	impl<T: CombinedExternalities + 'static> AsExternalities<dyn CombinedExternalities> for T {
 		fn as_externalities(&mut self) -> &mut (dyn CombinedExternalities + 'static) {
