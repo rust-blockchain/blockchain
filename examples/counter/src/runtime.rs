@@ -113,7 +113,7 @@ impl Executor {
 impl BlockExecutor for Executor {
 	type Error = Error;
 	type Block = Block;
-	type Externalities = dyn StorageExternalities<Error=Infallible> + 'static;
+	type Externalities = dyn StorageExternalities<Infallible> + 'static;
 
 	fn execute_block(
 		&self,
@@ -142,7 +142,7 @@ impl BuilderExecutor for Executor {
 	type Error = Error;
 	type Block = Block;
 	type BuildBlock = UnsealedBlock;
-	type Externalities = dyn StorageExternalities<Error=Infallible> + 'static;
+	type Externalities = dyn StorageExternalities<Infallible> + 'static;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();
 

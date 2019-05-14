@@ -66,9 +66,7 @@ impl AsExternalities<dyn NullExternalities> for KeyValueMemoryState {
 	}
 }
 
-impl StorageExternalities for KeyValueMemoryState {
-	type Error = Infallible;
-
+impl StorageExternalities<Infallible> for KeyValueMemoryState {
 	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Infallible> {
 		Ok(self.storage.get(key).map(|value| value.to_vec()))
 	}
@@ -82,8 +80,28 @@ impl StorageExternalities for KeyValueMemoryState {
 	}
 }
 
-impl AsExternalities<dyn StorageExternalities<Error=Infallible>> for KeyValueMemoryState {
-	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Error=Infallible> + 'static) {
+impl StorageExternalities<Box<stderror::Error>> for KeyValueMemoryState {
+	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<stderror::Error>> {
+		Ok(self.storage.get(key).map(|value| value.to_vec()))
+	}
+
+	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>) {
+		self.storage.insert(key, value);
+	}
+
+	fn remove_storage(&mut self, key: &[u8]) {
+		self.storage.remove(key);
+	}
+}
+
+impl AsExternalities<dyn StorageExternalities<Infallible>> for KeyValueMemoryState {
+	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Infallible> + 'static) {
+		self
+	}
+}
+
+impl AsExternalities<dyn StorageExternalities<Box<stderror::Error>>> for KeyValueMemoryState {
+	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Box<stderror::Error>> + 'static) {
 		self
 	}
 }
@@ -355,9 +373,9 @@ mod tests {
 		fn parent_id(&self) -> Option<usize> { if self.parent_id == 0 { None } else { Some(self.parent_id) } }
 	}
 
-	pub trait CombinedExternalities: NullExternalities + StorageExternalities<Error=Infallible> { }
+	pub trait CombinedExternalities: NullExternalities + StorageExternalities<Infallible> { }
 
-	impl<T: NullExternalities + StorageExternalities<Error=Infallible>> CombinedExternalities for T { }
+	impl<T: NullExternalities + StorageExternalities<Infallible>> CombinedExternalities for T { }
 
 	impl<T: CombinedExternalities + 'static> AsExternalities<dyn CombinedExternalities> for T {
 		fn as_externalities(&mut self) -> &mut (dyn CombinedExternalities + 'static) {
