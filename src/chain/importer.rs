@@ -62,6 +62,7 @@ impl<'a, 'executor, E: BlockExecutor, Ba> Importer<'a, 'executor, E, Ba> where
 	Ba: Backend<Block=E::Block> + ChainQuery,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
+	Error: From<E::Error> + From<Ba::Error>,
 {
 	/// Get the associated backend of the importer.
 	pub fn backend(&self) -> &'a SharedBackend<Ba> {
@@ -72,10 +73,8 @@ impl<'a, 'executor, E: BlockExecutor, Ba> Importer<'a, 'executor, E, Ba> where
 	pub fn import_block(&mut self, block: E::Block) -> Result<(), Error> {
 		let mut state = self.backend
 			.read()
-			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)
-			.map_err(|e| Error::Backend(Box::new(e)))?;
-		self.executor.execute_block(&block, state.as_externalities())
-			.map_err(|e| Error::Executor(Box::new(e)))?;
+			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)?;
+		self.executor.execute_block(&block, state.as_externalities())?;
 
 		let operation = ImportOperation { block, state };
 		self.import_raw(operation);
@@ -104,8 +103,8 @@ impl<'a, 'executor, E: BlockExecutor, Ba> Importer<'a, 'executor, E, Ba> where
 	}
 
 	/// Commit operation and drop import lock.
-	pub fn commit(self) -> Result<(), Ba::Error> {
-		self.backend.backend.write().expect("backend lock is poisoned")
-			.commit(self.pending)
+	pub fn commit(self) -> Result<(), Error> {
+		Ok(self.backend.backend.write().expect("backend lock is poisoned")
+		   .commit(self.pending)?)
 	}
 }

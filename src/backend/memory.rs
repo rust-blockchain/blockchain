@@ -14,7 +14,7 @@ pub enum Error {
 	/// Invalid operation.
 	InvalidOperation,
 	/// Trying to import a block that is genesis.
-	ImportingGenesis,
+	IsGenesis,
 	/// Block trying to query does not exist in the backend.
 	NotExist,
 }
@@ -27,9 +27,9 @@ impl fmt::Display for Error {
 
 impl stderror::Error for Error { }
 
-impl Into<crate::chain::Error> for Error {
-	fn into(self) -> crate::chain::Error {
-		crate::chain::Error::Backend(Box::new(self))
+impl From<Error> for crate::chain::Error {
+	fn from(error: Error) -> Self {
+		crate::chain::Error::Backend(Box::new(error))
 	}
 }
 
@@ -133,7 +133,7 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> Backend for MemoryBackend<B, A, S> {
 							None
 						}
 					},
-					None => return Err(Error::ImportingGenesis),
+					None => return Err(Error::IsGenesis),
 				};
 				let depth = parent_depth.map(|d| d + 1);
 

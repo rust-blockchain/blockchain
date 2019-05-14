@@ -195,6 +195,7 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BestDepthImport
 impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for BestDepthImporter<E, Ba> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
+	blockchain::chain::Error: From<E::Error> + From<Ba::Error>,
 {
 	type Block = E::Block;
 	type Error = blockchain::chain::Error;
@@ -219,9 +220,7 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for
 		if new_depth > current_best_depth {
 			importer.set_head(new_hash);
 		}
-		importer.commit().map_err(|e| {
-			blockchain::chain::Error::Backend(Box::new(e))
-		})?;
+		importer.commit()?;
 
 		Ok(())
 	}

@@ -77,17 +77,17 @@ pub enum Error {
 
 impl std::fmt::Display for Error {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		match self {
-			Error::DifficultyTooLow => "Difficulty too low".fmt(f)?,
-			Error::StateCorruption => "State is corrupted".fmt(f)?,
-			Error::Backend(_) => "Backend error".fmt(f)?,
-		}
-
-		Ok(())
+		write!(f, "{:?}", self)
 	}
 }
 
 impl std::error::Error for Error { }
+
+impl From<Error> for blockchain::chain::Error {
+	fn from(error: Error) -> Self {
+		blockchain::chain::Error::Executor(Box::new(error))
+	}
+}
 
 #[derive(Clone)]
 pub struct Executor;
