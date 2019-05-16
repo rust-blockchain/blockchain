@@ -69,14 +69,19 @@ impl<'a, 'executor, E: BlockExecutor, Ba> Importer<'a, 'executor, E, Ba> where
 		self.backend
 	}
 
-	/// Import a new block.
-	pub fn import_block(&mut self, block: E::Block) -> Result<(), Error> {
+	/// Execute a new block.
+	pub fn execute_block(&self, block: E::Block) -> Result<ImportOperation<E::Block, Ba::State>, Error> {
 		let mut state = self.backend
 			.read()
 			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)?;
 		self.executor.execute_block(&block, state.as_externalities())?;
 
-		let operation = ImportOperation { block, state };
+		Ok(ImportOperation { block, state })
+	}
+
+	/// Import a new block.
+	pub fn import_block(&mut self, block: E::Block) -> Result<(), Error> {
+		let operation = self.execute_block(block)?;
 		self.import_raw(operation);
 
 		Ok(())
