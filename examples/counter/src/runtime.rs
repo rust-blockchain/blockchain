@@ -139,10 +139,7 @@ impl BlockExecutor for Executor {
 }
 
 impl BuilderExecutor for Executor {
-	type Error = Error;
-	type Block = Block;
 	type BuildBlock = UnsealedBlock;
-	type Externalities = dyn StorageExternalities<Infallible> + 'static;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();
 

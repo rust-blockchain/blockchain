@@ -203,15 +203,9 @@ pub trait BlockExecutor {
 }
 
 /// Builder executor
-pub trait BuilderExecutor {
-	/// Error type
-	type Error: stderror::Error + 'static;
-	/// Block type
-	type Block: Block;
+pub trait BuilderExecutor: BlockExecutor {
 	/// Build block type
 	type BuildBlock;
-	/// Externalities type
-	type Externalities: ?Sized;
 	/// Inherent
 	type Inherent;
 	/// Extrinsic
