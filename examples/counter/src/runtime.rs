@@ -1,7 +1,7 @@
 use primitive_types::H256;
 use blockchain::traits::{
 	Block as BlockT, BlockExecutor,
-	BuilderExecutor, StorageExternalities,
+	SimpleBuilderExecutor, StorageExternalities,
 };
 use codec::{Encode, Decode};
 use sha3::{Digest, Sha3_256};
@@ -138,7 +138,7 @@ impl BlockExecutor for Executor {
 	}
 }
 
-impl BuilderExecutor for Executor {
+impl SimpleBuilderExecutor for Executor {
 	type BuildBlock = UnsealedBlock;
 	type Extrinsic = Extrinsic;
 	type Inherent = ();

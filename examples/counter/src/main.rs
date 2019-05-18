@@ -4,8 +4,8 @@ extern crate parity_codec_derive as codec_derive;
 mod runtime;
 
 use blockchain::backend::{MemoryBackend, KeyValueMemoryState, MemoryLikeBackend};
-use blockchain::chain::{SharedBackend, BlockBuilder};
-use blockchain::traits::{Block as BlockT, ChainQuery, ImportOperation};
+use blockchain::chain::SharedBackend;
+use blockchain::traits::{Block as BlockT, ChainQuery, ImportOperation, SimpleBuilderExecutor, AsExternalities};
 use blockchain_network_simple::{BestDepthImporter, BestDepthStatusProducer};
 use std::thread;
 use std::collections::HashMap;
@@ -100,14 +100,22 @@ fn builder_thread(backend_build: SharedBackend<MemoryBackend<Block, (), KeyValue
 		println!("Building on top of {}", head);
 
 		// Build a block.
-		let builder = BlockBuilder::new(&backend_build, &executor, &head, ()).unwrap();
-		let (unsealed_block, state) = builder.finalize().unwrap();
+		let parent_block = backend_build.read().block_at(&head).unwrap();
+		let mut pending_state = backend_build.read().state_at(&head).unwrap();
+
+		let mut unsealed_block = executor.initialize_block(
+			&parent_block, pending_state.as_externalities(), ()
+		).unwrap();
+		executor.finalize_block(
+			&mut unsealed_block, pending_state.as_externalities(),
+		).unwrap();
+
 		let block = unsealed_block.seal();
 
 		// Import the built block.
 		let mut build_importer = backend_build.begin_import(&executor);
 		let new_block_hash = block.id();
-		let op = ImportOperation { block, state };
+		let op = ImportOperation { block, state: pending_state };
 		build_importer.import_raw(op);
 		build_importer.set_head(new_block_hash);
 		build_importer.commit().unwrap();

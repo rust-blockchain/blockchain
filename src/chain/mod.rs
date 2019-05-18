@@ -1,10 +1,8 @@
 //! Chain importer and block builder.
 
 mod importer;
-mod block_builder;
 
 pub use self::importer::{SharedBackend, Importer};
-pub use self::block_builder::BlockBuilder;
 
 use crate::traits::ImportBlock;
 use std::sync::{Arc, Mutex};

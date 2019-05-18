@@ -203,7 +203,7 @@ pub trait BlockExecutor {
 }
 
 /// Builder executor
-pub trait BuilderExecutor: BlockExecutor {
+pub trait SimpleBuilderExecutor: BlockExecutor {
 	/// Build block type
 	type BuildBlock;
 	/// Inherent
