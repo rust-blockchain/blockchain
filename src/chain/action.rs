@@ -23,6 +23,23 @@ impl<Ba: Backend> SharedBackend<Ba> {
 		self.backend.read().expect("backend lock is poisoned")
 	}
 
+	/// Execute a new block.
+	pub fn execute_block<'executor, E: BlockExecutor<Block=Ba::Block>>(
+		&self,
+		executor: &'executor E,
+		block: Ba::Block,
+	) -> Result<ImportOperation<E::Block, Ba::State>, Error> where
+		Ba: ChainQuery,
+		Ba::State: AsExternalities<E::Externalities>,
+		Error: From<E::Error> + From<Ba::Error>,
+	{
+		let mut state = self.read()
+			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)?;
+		executor.execute_block(&block, state.as_externalities())?;
+
+		Ok(ImportOperation { block, state })
+	}
+
 	/// Begin an import operation, returns an importer.
 	pub fn begin_import<'a, 'executor, E: BlockExecutor<Block=Ba::Block>>(
 		&'a self,
@@ -70,13 +87,10 @@ impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> whe
 	}
 
 	/// Execute a new block.
-	pub fn execute_block(&self, block: E::Block) -> Result<ImportOperation<E::Block, Ba::State>, Error> {
-		let mut state = self.backend
-			.read()
-			.state_at(&block.parent_id().ok_or(Error::IsGenesis)?)?;
-		self.executor.execute_block(&block, state.as_externalities())?;
-
-		Ok(ImportOperation { block, state })
+	pub fn execute_block(
+		&self, block: Ba::Block
+	) -> Result<ImportOperation<E::Block, Ba::State>, Error> {
+		self.backend.execute_block(self.executor, block)
 	}
 
 	/// Import a new block.
