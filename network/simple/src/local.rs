@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use core::hash::Hash;
 use core::fmt::Debug;
 use blockchain::chain::SharedBackend;
-use blockchain::traits::{ChainQuery, ImportBlock};
+use blockchain::traits::{ChainQuery, BlockImporter};
 use crate::{SimpleSync, SimpleSyncMessage, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
 pub struct LocalNetwork<P, B, S> {
@@ -58,7 +58,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
 	Ba: ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Send + Sync,
-	I: ImportBlock<Block=Ba::Block> + Send + Sync + 'static,
+	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
 	St::Status: Clone + Debug + Send + Sync,
 {
@@ -89,7 +89,7 @@ pub fn start_local_simple_sync<P, Ba, I, St>(
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
 	Ba: ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Send + Sync,
-	I: ImportBlock<Block=Ba::Block> + Send + Sync + 'static,
+	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
 	St::Status: Clone + Debug + Send + Sync,
 {

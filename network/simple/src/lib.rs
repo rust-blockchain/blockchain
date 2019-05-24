@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 use core::cmp::Ordering;
 use codec::{Encode, Decode};
 use blockchain::chain::SharedBackend;
-use blockchain::traits::{Backend, ChainQuery, ImportBlock, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
+use blockchain::traits::{Backend, ChainQuery, BlockImporter, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
 pub trait StatusProducer {
 	type Status: Ord + Encode + Decode;
@@ -105,7 +105,7 @@ impl<P, Ba: Backend, I, St: StatusProducer> NetworkEnvironment for SimpleSync<P,
 	type Message = SimpleSyncMessage<Ba::Block, St::Status>;
 }
 
-impl<P, Ba: ChainQuery, I: ImportBlock<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
+impl<P, Ba: ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
 	fn on_tick<H: NetworkHandle>(
 		&mut self, handle: &mut H
 	) where
@@ -192,7 +192,7 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BestDepthImport
 	}
 }
 
-impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> ImportBlock for BestDepthImporter<E, Ba> where
+impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 	blockchain::chain::Error: From<E::Error> + From<Ba::Error>,

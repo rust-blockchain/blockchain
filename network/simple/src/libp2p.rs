@@ -12,7 +12,7 @@ use futures::{Async, stream::Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Interval;
 use blockchain::chain::SharedBackend;
-use blockchain::traits::{ImportBlock, ChainQuery};
+use blockchain::traits::{BlockImporter, ChainQuery};
 use crate::{SimpleSyncMessage, SimpleSync, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
 #[derive(NetworkBehaviour)]
@@ -106,7 +106,7 @@ pub fn start_network_simple_sync<Ba, I, St>(
 ) where
 	Ba: ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Encode + Decode + Send + Sync,
-	I: ImportBlock<Block=Ba::Block> + Send + Sync + 'static,
+	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
 	St::Status: Debug + Clone + Send + Sync,
 {

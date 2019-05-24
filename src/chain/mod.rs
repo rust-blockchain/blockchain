@@ -4,7 +4,7 @@ mod action;
 
 pub use self::action::{SharedBackend, ImportAction};
 
-use crate::traits::{RawImporter, BlockImporter, BlockExecutor};
+use crate::traits::BlockImporter;
 use std::sync::{Arc, Mutex};
 use std::{fmt, error as stderror};
 
@@ -46,7 +46,7 @@ impl<I: BlockImporter> SharedBlockImporter<I> {
 	/// Create a new shared import block.
 	pub fn new(importer: I) -> Self {
 		Self {
-			importer: Arc::new(Mutex::new(import_block)),
+			importer: Arc::new(Mutex::new(importer)),
 		}
 	}
 }
@@ -54,7 +54,7 @@ impl<I: BlockImporter> SharedBlockImporter<I> {
 impl<I: BlockImporter> Clone for SharedBlockImporter<I> {
 	fn clone(&self) -> Self {
 		Self {
-			importer: self.import_block.clone(),
+			importer: self.importer.clone(),
 		}
 	}
 }
