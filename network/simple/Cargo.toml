@@ -7,7 +7,7 @@ license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]
-blockchain = { version = "0.5", path = "../.." }
+blockchain = { version = "0.6", path = "../.." }
 libp2p = "0.7"
 parity-codec = { version = "3.0", features = ["derive"] }
 futures = "0.1"
