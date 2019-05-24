@@ -1,10 +1,10 @@
 //! Chain importer and block builder.
 
-mod importer;
+mod action;
 
-pub use self::importer::{SharedBackend, Importer};
+pub use self::action::{SharedBackend, ImportAction};
 
-use crate::traits::ImportBlock;
+use crate::traits::{RawImporter, BlockImporter, BlockExecutor};
 use std::sync::{Arc, Mutex};
 use std::{fmt, error as stderror};
 
@@ -38,33 +38,33 @@ impl stderror::Error for Error {
 }
 
 /// An import block that can be shared across threads.
-pub struct SharedImportBlock<I: ImportBlock> {
-	import_block: Arc<Mutex<I>>,
+pub struct SharedBlockImporter<I: BlockImporter> {
+	importer: Arc<Mutex<I>>,
 }
 
-impl<I: ImportBlock> SharedImportBlock<I> {
+impl<I: BlockImporter> SharedBlockImporter<I> {
 	/// Create a new shared import block.
-	pub fn new(import_block: I) -> Self {
+	pub fn new(importer: I) -> Self {
 		Self {
-			import_block: Arc::new(Mutex::new(import_block)),
+			importer: Arc::new(Mutex::new(import_block)),
 		}
 	}
 }
 
-impl<I: ImportBlock> Clone for SharedImportBlock<I> {
+impl<I: BlockImporter> Clone for SharedBlockImporter<I> {
 	fn clone(&self) -> Self {
 		Self {
-			import_block: self.import_block.clone(),
+			importer: self.import_block.clone(),
 		}
 	}
 }
 
-impl<I: ImportBlock> ImportBlock for SharedImportBlock<I> {
+impl<I: BlockImporter> BlockImporter for SharedBlockImporter<I> {
 	type Block = I::Block;
 	type Error = I::Error;
 
 	fn import_block(&mut self, block: Self::Block) -> Result<(), Self::Error> {
-		self.import_block.lock().expect("Lock is poisoned")
+		self.importer.lock().expect("Lock is poisoned")
 			.import_block(block)
 	}
 }

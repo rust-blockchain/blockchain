@@ -174,8 +174,8 @@ pub trait ChainQuery: Backend {
 	) -> Result<Self::Block, Self::Error>;
 }
 
-/// Trait used for committing block, usually built on top of a backend.
-pub trait ImportBlock {
+/// Trait used for committing blocks, usually built on top of a backend.
+pub trait BlockImporter {
 	/// Block type
 	type Block: Block;
 	/// Error type
@@ -183,6 +183,22 @@ pub trait ImportBlock {
 
 	/// Commit a block into the backend, and handle consensus and auxiliary.
 	fn import_block(&mut self, block: Self::Block) -> Result<(), Self::Error>;
+}
+
+/// Trait used for committing prebuilt blocks, usually built on top of a backend.
+pub trait RawImporter {
+	/// Block type
+	type Block: Block;
+	/// State type
+	type State;
+	/// Error type
+	type Error: stderror::Error + 'static;
+
+	/// Commit a prebuilt block into the backend, and handle consensus and auxiliary.
+	fn import_raw(
+		&mut self,
+		operation: ImportOperation<Self::Block, Self::State>
+	) -> Result<(), Self::Error>;
 }
 
 /// Block executor

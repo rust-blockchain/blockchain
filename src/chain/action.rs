@@ -27,10 +27,10 @@ impl<Ba: Backend> SharedBackend<Ba> {
 	pub fn begin_import<'a, 'executor, E: BlockExecutor<Block=Ba::Block>>(
 		&'a self,
 		executor: &'executor E
-	) -> Importer<'a, 'executor, E, Ba> where
+	) -> ImportAction<'a, 'executor, E, Ba> where
 		Ba::State: AsExternalities<E::Externalities>
 	{
-		Importer {
+		ImportAction {
 			executor,
 			backend: self,
 			pending: Default::default(),
@@ -49,7 +49,7 @@ impl<Ba: Backend> Clone for SharedBackend<Ba> {
 }
 
 /// Block importer.
-pub struct Importer<'a, 'executor, E: BlockExecutor, Ba: Backend<Block=E::Block>> where
+pub struct ImportAction<'a, 'executor, E: BlockExecutor, Ba: Backend<Block=E::Block>> where
 	Ba::Auxiliary: Auxiliary<E::Block>
 {
 	executor: &'executor E,
@@ -58,7 +58,7 @@ pub struct Importer<'a, 'executor, E: BlockExecutor, Ba: Backend<Block=E::Block>
 	_guard: MutexGuard<'a, ()>,
 }
 
-impl<'a, 'executor, E: BlockExecutor, Ba> Importer<'a, 'executor, E, Ba> where
+impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
 	Ba: Backend<Block=E::Block> + ChainQuery,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
