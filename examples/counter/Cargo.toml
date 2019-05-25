@@ -11,9 +11,4 @@ parity-codec-derive = "3.0"
 blockchain = { version = "0.6", path = "../.." }
 blockchain-network-simple = { version = "0.2", path = "../../network/simple" }
 sha3 = "0.8"
-libp2p = "0.7"
-tokio = "0.1"
-tokio-io = "0.1"
-tokio-timer = "0.2"
-futures = "0.1"
 clap = "2.33"

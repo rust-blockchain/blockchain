@@ -1,6 +1,6 @@
 [package]
 name = "blockchain-network-simple"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Wei Tang <hi@that.world>"]
 description = "Simple network interface for blockchain"
 license = "GPL-3.0"
@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 blockchain = { version = "0.6", path = "../.." }
-libp2p = "0.7"
+libp2p = "0.8"
 parity-codec = { version = "3.0", features = ["derive"] }
 futures = "0.1"
 tokio = "0.1"
