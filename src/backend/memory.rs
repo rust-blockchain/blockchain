@@ -4,18 +4,14 @@ use std::convert::Infallible;
 
 use crate::traits::{
 	AsExternalities, Backend, NullExternalities,
-	StorageExternalities, Block, Auxiliary, Operation,
+	StorageExternalities, Block, Auxiliary,
 	ChainQuery,
 };
-use super::{Committable, tree_route};
+use super::{BlockData, Database, DirectBackend};
 
 #[derive(Debug)]
 /// Memory errors
 pub enum Error {
-	/// Invalid operation.
-	InvalidOperation,
-	/// Trying to import a block that is genesis.
-	IsGenesis,
 	/// Block trying to query does not exist in the backend.
 	NotExist,
 }
@@ -34,10 +30,24 @@ impl From<Error> for crate::import::Error {
 	}
 }
 
+impl From<Error> for crate::backend::DirectError {
+	fn from(error: Error) -> Self {
+		match error {
+			Error::NotExist => crate::backend::DirectError::NotExist,
+		}
+	}
+}
+
 /// A backend type that stores all information in memory.
 pub trait MemoryLikeBackend: Backend {
 	/// Create a new memory backend from a genesis block.
 	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self;
+}
+
+impl<DB: Database + MemoryLikeBackend> MemoryLikeBackend for DirectBackend<DB> {
+	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self {
+		DirectBackend::new(DB::new_with_genesis(block, genesis_state))
+	}
 }
 
 /// State stored in memory.
@@ -106,16 +116,8 @@ impl AsExternalities<dyn StorageExternalities<Box<stderror::Error>>> for KeyValu
 	}
 }
 
-struct BlockData<B: Block, S> {
-	block: B,
-	state: S,
-	depth: usize,
-	children: Vec<B::Identifier>,
-	is_canon: bool,
-}
-
-/// Memory backend.
-pub struct MemoryBackend<B: Block, A: Auxiliary<B>, S> {
+/// Database backed by memory.
+pub struct MemoryDatabase<B: Block, A: Auxiliary<B>, S> {
 	blocks_and_states: HashMap<B::Identifier, BlockData<B, S>>,
 	head: B::Identifier,
 	genesis: B::Identifier,
@@ -123,133 +125,80 @@ pub struct MemoryBackend<B: Block, A: Auxiliary<B>, S> {
 	auxiliaries: HashMap<A::Key, A>,
 }
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> Backend for MemoryBackend<B, A, S> {
+impl<B: Block, A: Auxiliary<B>, S: Clone> Backend for MemoryDatabase<B, A, S> {
 	type Block = B;
 	type State = S;
 	type Auxiliary = A;
 	type Error = Error;
 }
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> Committable for MemoryBackend<B, A, S> {
-	fn commit(
+impl<B: Block, A: Auxiliary<B>, S: Clone> Database for MemoryDatabase<B, A, S> {
+	fn insert_block(
 		&mut self,
-		operation: Operation<B, Self::State, A>,
-	) -> Result<(), Error> {
-		let mut parent_ides = HashMap::new();
-		let mut importing: HashMap<B::Identifier, BlockData<B, S>> = HashMap::new();
-		let mut verifying = operation.import_block;
-
-		// Do precheck to make sure the import operation is valid.
-		loop {
-			let mut progress = false;
-			let mut next_verifying = Vec::new();
-
-			for op in verifying {
-				let parent_depth = match op.block.parent_id() {
-					Some(parent_id) => {
-						if self.contains(&parent_id)? {
-							Some(self.depth_at(&parent_id)?)
-						} else if importing.contains_key(&parent_id) {
-							importing.get(&parent_id)
-								.map(|data| data.depth)
-						} else {
-							None
-						}
-					},
-					None => return Err(Error::IsGenesis),
-				};
-				let depth = parent_depth.map(|d| d + 1);
-
-				if let Some(depth) = depth {
-					progress = true;
-					if let Some(parent_id) = op.block.parent_id() {
-						parent_ides.insert(op.block.id(), parent_id);
-					}
-					importing.insert(op.block.id(), BlockData {
-						block: op.block,
-						state: op.state,
-						depth,
-						children: Vec::new(),
-						is_canon: false,
-					});
-				} else {
-					next_verifying.push(op)
-				}
-			}
-
-			if next_verifying.len() == 0 {
-				break;
-			}
-
-			if !progress {
-				return Err(Error::InvalidOperation);
-			}
-
-			verifying = next_verifying;
-		}
-
-		// Do precheck to make sure the head going to set exists.
-		if let Some(new_head) = &operation.set_head {
-			let head_exists = self.contains(new_head)? ||
-				importing.contains_key(new_head);
-
-			if !head_exists {
-				return Err(Error::InvalidOperation);
-			}
-		}
-
-		// Do precheck to make sure auxiliary is valid.
-		for aux in &operation.insert_auxiliaries {
-			for id in aux.associated() {
-				if !(self.contains(&id)? || importing.contains_key(&id)) {
-					return Err(Error::InvalidOperation);
-				}
-			}
-		}
-
-		self.blocks_and_states.extend(importing);
-
-		// Fix children at ides.
-		for (id, parent_id) in parent_ides {
-			self.blocks_and_states.get_mut(&parent_id)
-				.expect("Parent id are checked to exist or has been just imported; qed")
-				.children.push(id);
-		}
-
-		if let Some(new_head) = operation.set_head {
-			let route = tree_route(self, &self.head, &new_head)
-				.expect("Blocks are checked to exist or importing; qed");
-
-			for id in route.retracted() {
-				let mut block = self.blocks_and_states.get_mut(id)
-					.expect("Block is fetched from tree_route; it must exist; qed");
-				block.is_canon = false;
-				self.canon_depth_mappings.remove(&block.depth);
-			}
-
-			for id in route.enacted() {
-				let mut block = self.blocks_and_states.get_mut(id)
-					.expect("Block is fetched from tree_route; it must exist; qed");
-				block.is_canon = true;
-				self.canon_depth_mappings.insert(block.depth, *id);
-			}
-
-			self.head = new_head;
-		}
-
-		for aux_key in operation.remove_auxiliaries {
-			self.auxiliaries.remove(&aux_key);
-		}
-
-		for aux in operation.insert_auxiliaries {
-			self.auxiliaries.insert(aux.key(), aux);
-		}
-
-		Ok(())
+		id: <Self::Block as Block>::Identifier,
+		block: Self::Block,
+		state: Self::State,
+		depth: usize,
+		children: Vec<<Self::Block as Block>::Identifier>,
+		is_canon: bool
+	) {
+		self.blocks_and_states.insert(id, BlockData {
+			block, state, depth, children, is_canon
+		});
+	}
+	fn push_child(
+		&mut self,
+		id: <Self::Block as Block>::Identifier,
+		child: <Self::Block as Block>::Identifier,
+	) {
+		self.blocks_and_states.get_mut(&id)
+			.expect("Internal database error")
+			.children.push(child);
+	}
+	fn set_canon(
+		&mut self,
+		id: <Self::Block as Block>::Identifier,
+		is_canon: bool
+	) {
+		self.blocks_and_states.get_mut(&id)
+			.expect("Internal database error")
+			.is_canon = is_canon;
+	}
+	fn insert_canon_depth_mapping(
+		&mut self,
+		depth: usize,
+		id: <Self::Block as Block>::Identifier,
+	) {
+		self.canon_depth_mappings.insert(depth, id);
+	}
+	fn remove_canon_depth_mapping(
+		&mut self,
+		depth: &usize
+	) {
+		self.canon_depth_mappings.remove(depth);
+	}
+	fn insert_auxiliary(
+		&mut self,
+		key: <Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+		value: Self::Auxiliary
+	) {
+		self.auxiliaries.insert(key, value);
+	}
+	fn remove_auxiliary(
+		&mut self,
+		key: &<Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+	) {
+		self.auxiliaries.remove(key);
+	}
+	fn set_head(
+		&mut self,
+		head: <Self::Block as Block>::Identifier
+	) {
+		self.head = head;
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryBackend<B, A, S> {
+impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryDatabase<B, A, S> {
 	fn head(&self) -> B::Identifier {
 		self.head
 	}
@@ -326,7 +275,10 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryBackend<B, A, S> 
 	}
 }
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryBackend<B, A, S> {
+/// Memory direct backend.
+pub type MemoryBackend<B, A, S> = DirectBackend<MemoryDatabase<B, A, S>>;
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryDatabase<B, A, S> {
 	fn new_with_genesis(block: B, genesis_state: S) -> Self {
 		assert!(block.parent_id().is_none(), "with_genesis must be provided with a genesis block");
 
@@ -345,7 +297,7 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryBackend<B,
 		let mut canon_depth_mappings = HashMap::new();
 		canon_depth_mappings.insert(0, genesis_id);
 
-		MemoryBackend {
+		MemoryDatabase {
 			blocks_and_states,
 			canon_depth_mappings,
 			auxiliaries: Default::default(),

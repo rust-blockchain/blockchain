@@ -2,10 +2,13 @@
 
 mod memory;
 mod route;
+mod database;
+mod direct;
 
-pub use self::memory::{KeyValueMemoryState, MemoryBackend, MemoryLikeBackend, Error as MemoryError};
+pub use self::memory::{KeyValueMemoryState, MemoryBackend, MemoryDatabase, MemoryLikeBackend, Error as MemoryError};
 pub use self::route::{tree_route, TreeRoute};
-// pub use crate::import::SharedBackend;
+pub use self::database::Database;
+pub use self::direct::{DirectBackend, BlockData, Error as DirectError};
 
 use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use crate::import::ImportAction;
