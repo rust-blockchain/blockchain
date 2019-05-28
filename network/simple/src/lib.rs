@@ -6,7 +6,7 @@ pub mod libp2p;
 use core::marker::PhantomData;
 use core::cmp::Ordering;
 use codec::{Encode, Decode};
-use blockchain::backend::{RwLockBackend, Actionable, Committable};
+use blockchain::backend::Actionable;
 use blockchain::traits::{Backend, ChainQuery, BlockImporter, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
 pub trait StatusProducer {
@@ -39,11 +39,11 @@ impl PartialEq for BestDepthStatus {
 }
 
 pub struct BestDepthStatusProducer<Ba: Backend> {
-	backend: RwLockBackend<Ba>,
+	backend: Ba,
 }
 
 impl<Ba: Backend> BestDepthStatusProducer<Ba> {
-	pub fn new(backend: RwLockBackend<Ba>) -> Self {
+	pub fn new(backend: Ba) -> Self {
 		Self { backend }
 	}
 }
@@ -92,8 +92,8 @@ pub enum SimpleSyncMessage<B, S> {
 	},
 }
 
-pub struct SimpleSync<P, Ba: Backend, I, St> {
-	backend: RwLockBackend<Ba>,
+pub struct SimpleSync<P, Ba, I, St> {
+	backend: Ba,
 	importer: I,
 	status: St,
 	_marker: PhantomData<P>,
@@ -104,7 +104,7 @@ impl<P, Ba: Backend, I, St: StatusProducer> NetworkEnvironment for SimpleSync<P,
 	type Message = SimpleSyncMessage<Ba::Block, St::Status>;
 }
 
-impl<P, Ba: Committable + ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
+impl<P, Ba: Actionable + ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
 	fn on_tick<H: NetworkHandle>(
 		&mut self, handle: &mut H
 	) where
@@ -177,7 +177,7 @@ impl<P, Ba: Committable + ChainQuery, I: BlockImporter<Block=Ba::Block>, St: Sta
 pub struct BestDepthImporter<E: BlockExecutor, Ba: Backend<Block=E::Block>> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 {
-	backend: RwLockBackend<Ba>,
+	backend: Ba,
 	executor: E,
 }
 
@@ -185,12 +185,12 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BestDepthImport
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 {
-	pub fn new(executor: E, backend: RwLockBackend<Ba>) -> Self {
+	pub fn new(executor: E, backend: Ba) -> Self {
 		Self { backend, executor }
 	}
 }
 
-impl<E: BlockExecutor, Ba: Committable + ChainQuery + Backend<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
+impl<E: BlockExecutor, Ba: Actionable + ChainQuery + Backend<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 	blockchain::import::Error: From<E::Error> + From<Ba::Error>,

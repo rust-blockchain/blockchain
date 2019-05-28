@@ -21,7 +21,7 @@ pub trait Committable: Backend {
 }
 
 /// Actionable backend.
-pub trait Actionable: Backend {
+pub trait Actionable: Backend + Clone {
 	/// Begin an import operation, returns an importer.
 	fn begin_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
 		&'a self,

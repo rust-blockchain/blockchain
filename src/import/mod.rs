@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::{fmt, error as stderror};
 
 /// Shared raw importer.
-pub trait SharedRawImporter: RawImporter {
+pub trait SharedRawImporter: RawImporter + Clone {
 	/// Commit a prebuilt block into the backend, and handle consensus and
 	/// auxiliary.
 	fn import_raw(
@@ -19,7 +19,7 @@ pub trait SharedRawImporter: RawImporter {
 }
 
 /// Shared block importer.
-pub trait SharedBlockImporter: BlockImporter {
+pub trait SharedBlockImporter: BlockImporter + Clone {
 	/// Commit a block into the backend, and handle consensus and auxiliary.
 	fn import_block(&self, block: Self::Block) -> Result<(), Self::Error>;
 }

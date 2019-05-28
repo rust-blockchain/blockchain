@@ -5,7 +5,7 @@ use std::sync::{Arc, mpsc::{SyncSender, Receiver, sync_channel}};
 use core::marker::PhantomData;
 use core::hash::Hash;
 use core::fmt::Debug;
-use blockchain::backend::{RwLockBackend, Committable};
+use blockchain::backend::Actionable;
 use blockchain::traits::{ChainQuery, BlockImporter};
 use crate::{SimpleSync, SimpleSyncMessage, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
@@ -51,12 +51,12 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 	mut handle: LocalNetworkHandle<P, Ba::Block, St::Status>,
 	receiver: Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>,
 	peer_id: P,
-	backend: RwLockBackend<Ba>,
+	backend: Ba,
 	importer: I,
 	status: St,
 ) -> JoinHandle<()> where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
-	Ba: Committable + ChainQuery + Send + Sync + 'static,
+	Ba: Actionable + ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Send + Sync,
 	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
@@ -84,17 +84,17 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 }
 
 pub fn start_local_simple_sync<P, Ba, I, St>(
-	peers: HashMap<P, (RwLockBackend<Ba>, I, St)>
+	peers: HashMap<P, (Ba, I, St)>
 ) where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
-	Ba: Committable + ChainQuery + Send + Sync + 'static,
+	Ba: Actionable + ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Send + Sync,
 	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
 	St::Status: Clone + Debug + Send + Sync,
 {
 	let mut senders: HashMap<P, SyncSender<(P, SimpleSyncMessage<Ba::Block, St::Status>)>> = HashMap::new();
-	let mut peers_with_receivers: HashMap<P, (RwLockBackend<Ba>, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
+	let mut peers_with_receivers: HashMap<P, (Ba, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
 	for (peer_id, (backend, importer, status)) in peers {
 		let (sender, receiver) = sync_channel(10);
 		senders.insert(peer_id.clone(), sender);
