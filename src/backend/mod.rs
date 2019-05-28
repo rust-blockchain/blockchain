@@ -7,8 +7,8 @@ mod direct;
 
 pub use self::memory::{KeyValueMemoryState, MemoryBackend, MemoryDatabase, MemoryLikeBackend, Error as MemoryError};
 pub use self::route::{tree_route, TreeRoute};
-pub use self::database::Database;
-pub use self::direct::{DirectBackend, BlockData, Error as DirectError};
+pub use self::database::{Database, SharedDatabase};
+pub use self::direct::{DirectBackend, SharedDirectBackend, BlockData, Error as DirectError};
 
 use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use crate::import::ImportAction;

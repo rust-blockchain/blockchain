@@ -91,17 +91,3 @@ impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> whe
 		Ok(self.backend.commit_action(self)?)
 	}
 }
-
-// impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
-// 	Ba: Backend<Block=E::Block> + ChainQuery,
-// 	Ba::Auxiliary: Auxiliary<E::Block>,
-// 	Ba::State: AsExternalities<E::Externalities>,
-// 	Error: From<E::Error> + From<Ba::Error>,
-// {
-
-
-
-
-
-
-// }
