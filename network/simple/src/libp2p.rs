@@ -11,7 +11,7 @@ use libp2p::core::swarm::{NetworkBehaviourEventProcess, NetworkBehaviourAction};
 use futures::{Async, stream::Stream};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Interval;
-use blockchain::backend::Actionable;
+use blockchain::backend::SharedCommittable;
 use blockchain::traits::{BlockImporter, ChainQuery};
 use crate::{SimpleSyncMessage, SimpleSync, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
@@ -104,7 +104,7 @@ pub fn start_network_simple_sync<Ba, I, St>(
 	importer: I,
 	status: St,
 ) where
-	Ba: Actionable + ChainQuery + Send + Sync + 'static,
+	Ba: SharedCommittable + ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Encode + Decode + Send + Sync,
 	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,

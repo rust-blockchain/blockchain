@@ -20,8 +20,8 @@ pub trait Committable: Backend {
 	) -> Result<(), Self::Error>;
 }
 
-/// Actionable backend.
-pub trait Actionable: Backend + Clone {
+/// SharedCommittable backend.
+pub trait SharedCommittable: Backend + Clone {
 	/// Begin an import operation, returns an importer.
 	fn begin_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
 		&'a self,
@@ -130,7 +130,7 @@ impl<Ba: ChainQuery> ChainQuery for RwLockBackend<Ba> {
 	}
 }
 
-impl<Ba: Committable + ChainQuery> Actionable for RwLockBackend<Ba> {
+impl<Ba: Committable + ChainQuery> SharedCommittable for RwLockBackend<Ba> {
 	fn begin_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
 		&'a self,
 		executor: &'executor E

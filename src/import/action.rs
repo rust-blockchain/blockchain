@@ -1,6 +1,6 @@
 use std::sync::MutexGuard;
 use super::Error;
-use crate::backend::Actionable;
+use crate::backend::SharedCommittable;
 use crate::traits::{Operation, ImportOperation, Block, BlockExecutor, Backend, AsExternalities, Auxiliary, ChainQuery};
 
 /// Block importer.
@@ -27,7 +27,7 @@ impl<'a, 'executor, E: BlockExecutor, Ba> From<ImportAction<'a, 'executor, E, Ba
 }
 
 impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
-	Ba: Actionable + Backend<Block=E::Block> + ChainQuery + ?Sized,
+	Ba: SharedCommittable + Backend<Block=E::Block> + ChainQuery + ?Sized,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 	Error: From<E::Error> + From<Ba::Error>,

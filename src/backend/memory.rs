@@ -359,7 +359,7 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryBackend<B,
 mod tests {
 	use super::*;
 	use crate::traits::*;
-	use crate::backend::{RwLockBackend, Actionable};
+	use crate::backend::{RwLockBackend, SharedCommittable};
 	use std::convert::Infallible;
 
 	#[derive(Clone)]

@@ -3,7 +3,7 @@ extern crate parity_codec_derive as codec_derive;
 
 mod runtime;
 
-use blockchain::backend::{RwLockBackend, MemoryBackend, KeyValueMemoryState, MemoryLikeBackend, Actionable};
+use blockchain::backend::{RwLockBackend, MemoryBackend, KeyValueMemoryState, MemoryLikeBackend, SharedCommittable};
 use blockchain::traits::{Block as BlockT, ChainQuery, ImportOperation, SimpleBuilderExecutor, AsExternalities};
 use blockchain_network_simple::{BestDepthImporter, BestDepthStatusProducer};
 use std::thread;

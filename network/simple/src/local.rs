@@ -5,7 +5,7 @@ use std::sync::{Arc, mpsc::{SyncSender, Receiver, sync_channel}};
 use core::marker::PhantomData;
 use core::hash::Hash;
 use core::fmt::Debug;
-use blockchain::backend::Actionable;
+use blockchain::backend::SharedCommittable;
 use blockchain::traits::{ChainQuery, BlockImporter};
 use crate::{SimpleSync, SimpleSyncMessage, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
@@ -56,7 +56,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 	status: St,
 ) -> JoinHandle<()> where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
-	Ba: Actionable + ChainQuery + Send + Sync + 'static,
+	Ba: SharedCommittable + ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Send + Sync,
 	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
@@ -87,7 +87,7 @@ pub fn start_local_simple_sync<P, Ba, I, St>(
 	peers: HashMap<P, (Ba, I, St)>
 ) where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
-	Ba: Actionable + ChainQuery + Send + Sync + 'static,
+	Ba: SharedCommittable + ChainQuery + Send + Sync + 'static,
 	Ba::Block: Debug + Send + Sync,
 	I: BlockImporter<Block=Ba::Block> + Send + Sync + 'static,
 	St: StatusProducer + Send + Sync + 'static,
