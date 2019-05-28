@@ -7,7 +7,7 @@ use crate::traits::{
 	StorageExternalities, Block, Auxiliary, Operation,
 	ChainQuery,
 };
-use super::tree_route;
+use super::{Committable, tree_route};
 
 #[derive(Debug)]
 /// Memory errors
@@ -28,9 +28,9 @@ impl fmt::Display for Error {
 
 impl stderror::Error for Error { }
 
-impl From<Error> for crate::chain::Error {
+impl From<Error> for crate::import::Error {
 	fn from(error: Error) -> Self {
-		crate::chain::Error::Backend(Box::new(error))
+		crate::import::Error::Backend(Box::new(error))
 	}
 }
 
@@ -128,7 +128,9 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> Backend for MemoryBackend<B, A, S> {
 	type State = S;
 	type Auxiliary = A;
 	type Error = Error;
+}
 
+impl<B: Block, A: Auxiliary<B>, S: Clone> Committable for MemoryBackend<B, A, S> {
 	fn commit(
 		&mut self,
 		operation: Operation<B, Self::State, A>,

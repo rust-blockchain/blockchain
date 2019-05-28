@@ -86,7 +86,7 @@ impl<B: Block, S, A: Auxiliary<B>> Default for Operation<B, S, A> {
 	}
 }
 
-/// Commit-able backend for a block context.
+/// Backend definition for a block context.
 pub trait Backend {
 	/// Block type
 	type Block: Block;
@@ -96,12 +96,6 @@ pub trait Backend {
 	type Auxiliary: Auxiliary<Self::Block>;
 	/// Error type
 	type Error: stderror::Error + 'static;
-
-	/// Commit operation.
-	fn commit(
-		&mut self,
-		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
-	) -> Result<(), Self::Error>;
 }
 
 /// Chain query interface for a backend.
