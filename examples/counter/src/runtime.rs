@@ -84,9 +84,9 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error { }
 
-impl From<Error> for blockchain::chain::Error {
+impl From<Error> for blockchain::import::Error {
 	fn from(error: Error) -> Self {
-		blockchain::chain::Error::Executor(Box::new(error))
+		blockchain::import::Error::Executor(Box::new(error))
 	}
 }
 

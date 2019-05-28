@@ -7,7 +7,7 @@ pub use self::memory::{KeyValueMemoryState, MemoryBackend, MemoryLikeBackend, Er
 pub use self::route::{tree_route, TreeRoute};
 // pub use crate::import::SharedBackend;
 
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, RwLock, Mutex, MutexGuard};
 use crate::import::ImportAction;
 use crate::traits::{Backend, BlockExecutor, AsExternalities, ChainQuery, Operation, Block, Auxiliary};
 
@@ -36,6 +36,9 @@ pub trait Actionable: Backend {
 		action: ImportAction<'a, 'executor, E, Self>
 	) -> Result<(), Self::Error> where
 		Self::State: AsExternalities<E::Externalities>;
+
+	/// Obtain the import lock.
+	fn lock_import<'a>(&'a self) -> MutexGuard<'a, ()>;
 }
 
 /// A shared backend based on RwLock.
@@ -50,6 +53,15 @@ impl<Ba: Backend> RwLockBackend<Ba> {
 		Self {
 			backend: Arc::new(RwLock::new(backend)),
 			import_lock: Arc::new(Mutex::new(())),
+		}
+	}
+}
+
+impl<Ba: Backend> Clone for RwLockBackend<Ba> {
+	fn clone(&self) -> Self {
+		Self {
+			backend: self.backend.clone(),
+			import_lock: self.import_lock.clone(),
 		}
 	}
 }
@@ -137,5 +149,9 @@ impl<Ba: Committable + ChainQuery> Actionable for RwLockBackend<Ba> {
 	{
 		self.backend.write().expect("Lock is poisoned")
 			.commit(action.into())
+	}
+
+	fn lock_import<'a>(&'a self) -> MutexGuard<'a, ()> {
+		self.import_lock.lock().expect("Lock is poisoned")
 	}
 }

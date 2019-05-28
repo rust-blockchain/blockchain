@@ -359,7 +359,7 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryBackend<B,
 mod tests {
 	use super::*;
 	use crate::traits::*;
-	use crate::chain::SharedBackend;
+	use crate::backend::{RwLockBackend, Actionable};
 	use std::convert::Infallible;
 
 	#[derive(Clone)]
@@ -411,7 +411,7 @@ mod tests {
 			Default::default()
 		);
 		let executor = DummyExecutor;
-		let shared = SharedBackend::new(backend);
-		let _ = shared.begin_import(&executor);
+		let shared = RwLockBackend::new(backend);
+		let _ = shared.begin_action(&executor);
 	}
 }

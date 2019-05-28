@@ -6,7 +6,7 @@ pub mod libp2p;
 use core::marker::PhantomData;
 use core::cmp::Ordering;
 use codec::{Encode, Decode};
-use blockchain::chain::SharedBackend;
+use blockchain::backend::{RwLockBackend, Actionable, Committable};
 use blockchain::traits::{Backend, ChainQuery, BlockImporter, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
 pub trait StatusProducer {
@@ -39,11 +39,11 @@ impl PartialEq for BestDepthStatus {
 }
 
 pub struct BestDepthStatusProducer<Ba: Backend> {
-	backend: SharedBackend<Ba>,
+	backend: RwLockBackend<Ba>,
 }
 
 impl<Ba: Backend> BestDepthStatusProducer<Ba> {
-	pub fn new(backend: SharedBackend<Ba>) -> Self {
+	pub fn new(backend: RwLockBackend<Ba>) -> Self {
 		Self { backend }
 	}
 }
@@ -53,9 +53,8 @@ impl<Ba: ChainQuery> StatusProducer for BestDepthStatusProducer<Ba> {
 
 	fn generate(&self) -> BestDepthStatus {
 		let best_depth = {
-			let backend = self.backend.read();
-			let best_hash = backend.head();
-			backend.depth_at(&best_hash)
+			let best_hash = self.backend.head();
+			self.backend.depth_at(&best_hash)
 				.expect("Best block depth hash cannot fail")
 		};
 
@@ -94,7 +93,7 @@ pub enum SimpleSyncMessage<B, S> {
 }
 
 pub struct SimpleSync<P, Ba: Backend, I, St> {
-	backend: SharedBackend<Ba>,
+	backend: RwLockBackend<Ba>,
 	importer: I,
 	status: St,
 	_marker: PhantomData<P>,
@@ -105,7 +104,7 @@ impl<P, Ba: Backend, I, St: StatusProducer> NetworkEnvironment for SimpleSync<P,
 	type Message = SimpleSyncMessage<Ba::Block, St::Status>;
 }
 
-impl<P, Ba: ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
+impl<P, Ba: Committable + ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> NetworkEvent for SimpleSync<P, Ba, I, St> {
 	fn on_tick<H: NetworkHandle>(
 		&mut self, handle: &mut H
 	) where
@@ -124,9 +123,8 @@ impl<P, Ba: ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> N
 			SimpleSyncMessage::Status(peer_status) => {
 				let status = self.status.generate();
 				let best_depth = {
-					let backend = self.backend.read();
-					let best_hash = backend.head();
-					backend.depth_at(&best_hash)
+					let best_hash = self.backend.head();
+					self.backend.depth_at(&best_hash)
 						.expect("Best block depth hash cannot fail")
 				};
 
@@ -143,11 +141,11 @@ impl<P, Ba: ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> N
 			} => {
 				let mut ret = Vec::new();
 				{
-					let backend = self.backend.read();
+					let _ = self.backend.lock_import();
 					for d in start_depth..(start_depth + count) {
-						match backend.lookup_canon_depth(d) {
+						match self.backend.lookup_canon_depth(d) {
 							Ok(Some(hash)) => {
-								let block = backend.block_at(&hash)
+								let block = self.backend.block_at(&hash)
 									.expect("Found hash cannot fail");
 								ret.push(block);
 							},
@@ -179,7 +177,7 @@ impl<P, Ba: ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> N
 pub struct BestDepthImporter<E: BlockExecutor, Ba: Backend<Block=E::Block>> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 {
-	backend: SharedBackend<Ba>,
+	backend: RwLockBackend<Ba>,
 	executor: E,
 }
 
@@ -187,24 +185,24 @@ impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BestDepthImport
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 {
-	pub fn new(executor: E, backend: SharedBackend<Ba>) -> Self {
+	pub fn new(executor: E, backend: RwLockBackend<Ba>) -> Self {
 		Self { backend, executor }
 	}
 }
 
-impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
+impl<E: BlockExecutor, Ba: Committable + ChainQuery + Backend<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
-	blockchain::chain::Error: From<E::Error> + From<Ba::Error>,
+	blockchain::import::Error: From<E::Error> + From<Ba::Error>,
 {
 	type Block = E::Block;
-	type Error = blockchain::chain::Error;
+	type Error = blockchain::import::Error;
 
 	fn import_block(&mut self, block: Ba::Block) -> Result<(), Self::Error> {
-		let mut importer = self.backend.begin_import(&self.executor);
+		let mut importer = self.backend.begin_action(&self.executor);
 		let new_hash = block.id();
 		let (current_best_depth, new_depth) = {
-			let backend = importer.backend().read();
+			let backend = importer.backend();
 			let current_best_hash = backend.head();
 			let current_best_depth = backend.depth_at(&current_best_hash)
 				.expect("Best block depth hash cannot fail");
