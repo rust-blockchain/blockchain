@@ -27,6 +27,24 @@ impl<'a, 'executor, E: BlockExecutor, Ba> From<ImportAction<'a, 'executor, E, Ba
 }
 
 impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
+	Ba: Backend<Block=E::Block> + ?Sized,
+	Ba::Auxiliary: Auxiliary<E::Block>
+{
+	/// Swap the backend.
+	pub fn swap<Ba2>(self, backend: &'a Ba2) -> ImportAction<'a, 'executor, E, Ba2> where
+		Ba2: Backend<Block=E::Block, State=Ba::State, Auxiliary=Ba::Auxiliary> + ?Sized,
+		Ba2::Auxiliary: Auxiliary<E::Block>
+	{
+		ImportAction {
+			executor: self.executor,
+			backend,
+			pending: self.pending,
+			_guard: self._guard,
+		}
+	}
+}
+
+impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
 	Ba: SharedCommittable + Backend<Block=E::Block> + ChainQuery + ?Sized,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
@@ -38,21 +56,6 @@ impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> whe
 			executor, backend,
 			pending: Default::default(),
 			_guard: import_guard
-		}
-	}
-
-	/// Swap the backend.
-	pub fn swap<Ba2>(self, backend: &'a Ba2) -> ImportAction<'a, 'executor, E, Ba2> where
-		Ba2: SharedCommittable + Backend<Block=E::Block, State=Ba::State, Auxiliary=Ba::Auxiliary> + ChainQuery + ?Sized,
-		Ba2::Auxiliary: Auxiliary<E::Block>,
-		Ba2::State: AsExternalities<E::Externalities>,
-		Error: From<E::Error> + From<Ba2::Error>,
-	{
-		ImportAction {
-			executor: self.executor,
-			backend,
-			pending: self.pending,
-			_guard: self._guard,
 		}
 	}
 
