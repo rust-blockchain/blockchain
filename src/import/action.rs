@@ -41,6 +41,21 @@ impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> whe
 		}
 	}
 
+	/// Swap the backend.
+	pub fn swap<Ba2>(self, backend: &'a Ba2) -> ImportAction<'a, 'executor, E, Ba2> where
+		Ba2: SharedCommittable + Backend<Block=E::Block, State=Ba::State, Auxiliary=Ba::Auxiliary> + ChainQuery + ?Sized,
+		Ba2::Auxiliary: Auxiliary<E::Block>,
+		Ba2::State: AsExternalities<E::Externalities>,
+		Error: From<E::Error> + From<Ba2::Error>,
+	{
+		ImportAction {
+			executor: self.executor,
+			backend,
+			pending: self.pending,
+			_guard: self._guard,
+		}
+	}
+
 	/// Get the associated backend of the importer.
 	pub fn backend(&self) -> &'a Ba {
 		self.backend
