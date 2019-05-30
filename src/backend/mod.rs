@@ -33,12 +33,11 @@ pub trait SharedCommittable: Backend + Clone {
 		crate::import::Error: From<E::Error> + From<Self::Error>,
 		Self::State: AsExternalities<E::Externalities>;
 
-	/// Commit an action into the backend.
-	fn commit_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
-		&'a self,
-		action: ImportAction<'a, 'executor, E, Self>
-	) -> Result<(), Self::Error> where
-		Self::State: AsExternalities<E::Externalities>;
+	/// Commit operation.
+	fn commit(
+		&self,
+		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
+	) -> Result<(), Self::Error>;
 
 	/// Obtain the import lock.
 	fn lock_import<'a>(&'a self) -> MutexGuard<'a, ()>;
@@ -144,14 +143,12 @@ impl<Ba: Committable + ChainQuery> SharedCommittable for RwLockBackend<Ba> {
 		ImportAction::new(executor, &self, self.import_lock.lock().expect("Lock is poisoned"))
 	}
 
-	fn commit_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
-		&'a self,
-		action: ImportAction<'a, 'executor, E, Self>
-	) -> Result<(), Self::Error> where
-		Self::State: AsExternalities<E::Externalities>
-	{
+	fn commit(
+		&self,
+		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
+	) -> Result<(), Self::Error> {
 		self.backend.write().expect("Lock is poisoned")
-			.commit(action.into())
+			.commit(operation)
 	}
 
 	fn lock_import<'a>(&'a self) -> MutexGuard<'a, ()> {

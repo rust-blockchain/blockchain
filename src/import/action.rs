@@ -27,24 +27,6 @@ impl<'a, 'executor, E: BlockExecutor, Ba> From<ImportAction<'a, 'executor, E, Ba
 }
 
 impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
-	Ba: Backend<Block=E::Block> + ?Sized,
-	Ba::Auxiliary: Auxiliary<E::Block>
-{
-	/// Swap the backend.
-	pub fn swap<Ba2>(self, backend: &'a Ba2) -> ImportAction<'a, 'executor, E, Ba2> where
-		Ba2: Backend<Block=E::Block, State=Ba::State, Auxiliary=Ba::Auxiliary> + ?Sized,
-		Ba2::Auxiliary: Auxiliary<E::Block>
-	{
-		ImportAction {
-			executor: self.executor,
-			backend,
-			pending: self.pending,
-			_guard: self._guard,
-		}
-	}
-}
-
-impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
 	Ba: SharedCommittable + Backend<Block=E::Block> + ChainQuery + ?Sized,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
@@ -106,6 +88,6 @@ impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> whe
 
 	/// Commit operation and drop import lock.
 	pub fn commit(self) -> Result<(), Error> {
-		Ok(self.backend.commit_action(self)?)
+		Ok(self.backend.commit(self.into())?)
 	}
 }

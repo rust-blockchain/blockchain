@@ -225,13 +225,10 @@ impl<DB: SharedDatabase + ChainQuery> SharedCommittable for SharedDirectBackend<
 		ImportAction::new(executor, &self, self.import_lock.lock().expect("Lock is poisoned"))
 	}
 
-	fn commit_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
-		&'a self,
-		action: ImportAction<'a, 'executor, E, Self>
-	) -> Result<(), Self::Error> where
-		Self::State: AsExternalities<E::Externalities>
-	{
-		let operation = Operation::from(action);
+	fn commit(
+		&self,
+		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
+	) -> Result<(), Self::Error> {
 		commit_operation!(self, operation)
 	}
 
