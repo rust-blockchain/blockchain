@@ -136,16 +136,6 @@ impl<Ba: ChainQuery> ChainQuery for RwLockBackend<Ba> {
 }
 
 impl<Ba: Committable + ChainQuery> SharedCommittable for RwLockBackend<Ba> {
-	fn begin_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
-		&'a self,
-		executor: &'executor E
-	) -> ImportAction<'a, 'executor, E, Self> where
-		crate::import::Error: From<E::Error> + From<Self::Error>,
-		Self::State: AsExternalities<E::Externalities>
-	{
-		ImportAction::new(executor, &self, self.import_lock.lock().expect("Lock is poisoned"))
-	}
-
 	fn commit(
 		&self,
 		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,

@@ -1,8 +1,7 @@
 use std::{fmt, error as stderror};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use crate::traits::{Backend, Operation, AsExternalities, BlockExecutor};
-use crate::import::ImportAction;
+use crate::traits::{Backend, Operation};
 use crate::backend::{tree_route, Committable, SharedCommittable, Database, SharedDatabase, ChainQuery, Block, Auxiliary};
 
 #[derive(Debug)]
@@ -215,16 +214,6 @@ impl<DB: SharedDatabase + ChainQuery> SharedCommittable for SharedDirectBackend<
 	Error: From<DB::Error>,
 	crate::import::Error: From<DB::Error>,
 {
-	fn begin_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
-		&'a self,
-		executor: &'executor E
-	) -> ImportAction<'a, 'executor, E, Self> where
-		crate::import::Error: From<E::Error> + From<Self::Error>,
-		Self::State: AsExternalities<E::Externalities>
-	{
-		ImportAction::new(executor, &self, self.import_lock.lock().expect("Lock is poisoned"))
-	}
-
 	fn commit(
 		&self,
 		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
