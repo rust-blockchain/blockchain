@@ -24,14 +24,17 @@ pub trait Committable: Backend {
 }
 
 /// SharedCommittable backend.
-pub trait SharedCommittable: Backend + Clone {
+pub trait SharedCommittable: ChainQuery + Backend + Clone {
 	/// Begin an import operation, returns an importer.
 	fn begin_action<'a, 'executor, E: BlockExecutor<Block=Self::Block>>(
 		&'a self,
 		executor: &'executor E
 	) -> ImportAction<'a, 'executor, E, Self> where
 		crate::import::Error: From<E::Error> + From<Self::Error>,
-		Self::State: AsExternalities<E::Externalities>;
+		Self::State: AsExternalities<E::Externalities>
+	{
+		ImportAction::new(executor, self, self.lock_import())
+	}
 
 	/// Commit operation.
 	fn commit(
