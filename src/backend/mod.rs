@@ -10,6 +10,7 @@ pub use self::memory::{MemoryBackend, MemoryDatabase, SharedMemoryBackend, Error
 pub use self::route::{tree_route, TreeRoute};
 pub use self::operation::{BlockData, ImportOperation, Operation};
 pub use self::traits::{Store, ChainQuery, ChainSettlement, OperationError, Committable, SharedCommittable};
+pub use self::state::KeyValueMemoryState;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use core::ops::{Deref, DerefMut};

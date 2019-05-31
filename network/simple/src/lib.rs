@@ -5,9 +5,11 @@ pub mod libp2p;
 
 use core::marker::PhantomData;
 use core::cmp::Ordering;
+use core::ops::Deref;
 use codec::{Encode, Decode};
-use blockchain::backend::SharedCommittable;
-use blockchain::traits::{Backend, ChainQuery, BlockImporter, BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
+use blockchain::backend::{SharedCommittable, Store, ChainQuery, Locked, Operation};
+use blockchain::import::{ImportAction, BlockImporter};
+use blockchain::traits::{BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
 pub trait StatusProducer {
 	type Status: Ord + Encode + Decode;
@@ -38,12 +40,12 @@ impl PartialEq for BestDepthStatus {
 	}
 }
 
-pub struct BestDepthStatusProducer<Ba: Backend> {
-	backend: Ba,
+pub struct BestDepthStatusProducer<Ba> {
+	backend: Locked<Ba>,
 }
 
-impl<Ba: Backend> BestDepthStatusProducer<Ba> {
-	pub fn new(backend: Ba) -> Self {
+impl<Ba> BestDepthStatusProducer<Ba> {
+	pub fn new(backend: Locked<Ba>) -> Self {
 		Self { backend }
 	}
 }
@@ -93,13 +95,13 @@ pub enum SimpleSyncMessage<B, S> {
 }
 
 pub struct SimpleSync<P, Ba, I, St> {
-	backend: Ba,
+	backend: Locked<Ba>,
 	importer: I,
 	status: St,
 	_marker: PhantomData<P>,
 }
 
-impl<P, Ba: Backend, I, St: StatusProducer> NetworkEnvironment for SimpleSync<P, Ba, I, St> {
+impl<P, Ba: Store, I, St: StatusProducer> NetworkEnvironment for SimpleSync<P, Ba, I, St> {
 	type PeerId = P;
 	type Message = SimpleSyncMessage<Ba::Block, St::Status>;
 }
@@ -174,32 +176,35 @@ impl<P, Ba: SharedCommittable + ChainQuery, I: BlockImporter<Block=Ba::Block>, S
 	}
 }
 
-pub struct BestDepthImporter<E: BlockExecutor, Ba: Backend<Block=E::Block>> where
-	Ba::Auxiliary: Auxiliary<E::Block>,
-{
-	backend: Ba,
+pub struct BestDepthImporter<E, Ba> {
+	backend: Locked<Ba>,
 	executor: E,
 }
 
-impl<E: BlockExecutor, Ba: ChainQuery + Backend<Block=E::Block>> BestDepthImporter<E, Ba> where
+impl<E: BlockExecutor, Ba: ChainQuery + Store<Block=E::Block>> BestDepthImporter<E, Ba> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 {
-	pub fn new(executor: E, backend: Ba) -> Self {
+	pub fn new(executor: E, backend: Locked<Ba>) -> Self {
 		Self { backend, executor }
 	}
 }
 
-impl<E: BlockExecutor, Ba: SharedCommittable + ChainQuery + Backend<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
+impl<E: BlockExecutor, Ba: ChainQuery + Store<Block=E::Block>> BlockImporter for BestDepthImporter<E, Ba> where
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
+	Ba: SharedCommittable<Operation=Operation<E::Block, <Ba as Store>::State, <Ba as Store>::Auxiliary>>,
 	blockchain::import::Error: From<E::Error> + From<Ba::Error>,
 {
 	type Block = E::Block;
 	type Error = blockchain::import::Error;
 
 	fn import_block(&mut self, block: Ba::Block) -> Result<(), Self::Error> {
-		let mut importer = self.backend.begin_action(&self.executor);
+		let mut importer = ImportAction::new(
+			&self.executor,
+			self.backend.deref(),
+			self.backend.lock_import()
+		);
 		let new_hash = block.id();
 		let (current_best_depth, new_depth) = {
 			let backend = importer.backend();

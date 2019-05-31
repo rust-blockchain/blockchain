@@ -8,7 +8,7 @@ edition = "2018"
 primitive-types = { version = "0.2", features = ["codec"] }
 parity-codec = "3.0"
 parity-codec-derive = "3.0"
-blockchain = { version = "0.7", path = "../.." }
-blockchain-network-simple = { version = "0.3", path = "../../network/simple" }
+blockchain = { version = "0.8", path = "../.." }
+blockchain-network-simple = { version = "0.4", path = "../../network/simple" }
 sha3 = "0.8"
 clap = "2.33"

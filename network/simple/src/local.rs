@@ -5,8 +5,8 @@ use std::sync::{Arc, mpsc::{SyncSender, Receiver, sync_channel}};
 use core::marker::PhantomData;
 use core::hash::Hash;
 use core::fmt::Debug;
-use blockchain::backend::SharedCommittable;
-use blockchain::traits::{ChainQuery, BlockImporter};
+use blockchain::backend::{SharedCommittable, ChainQuery, Locked};
+use blockchain::import::BlockImporter;
 use crate::{SimpleSync, SimpleSyncMessage, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
 pub struct LocalNetwork<P, B, S> {
@@ -51,7 +51,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 	mut handle: LocalNetworkHandle<P, Ba::Block, St::Status>,
 	receiver: Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>,
 	peer_id: P,
-	backend: Ba,
+	backend: Locked<Ba>,
 	importer: I,
 	status: St,
 ) -> JoinHandle<()> where
@@ -84,7 +84,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 }
 
 pub fn start_local_simple_sync<P, Ba, I, St>(
-	peers: HashMap<P, (Ba, I, St)>
+	peers: HashMap<P, (Locked<Ba>, I, St)>
 ) where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
 	Ba: SharedCommittable + ChainQuery + Send + Sync + 'static,
@@ -94,7 +94,7 @@ pub fn start_local_simple_sync<P, Ba, I, St>(
 	St::Status: Clone + Debug + Send + Sync,
 {
 	let mut senders: HashMap<P, SyncSender<(P, SimpleSyncMessage<Ba::Block, St::Status>)>> = HashMap::new();
-	let mut peers_with_receivers: HashMap<P, (Ba, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
+	let mut peers_with_receivers: HashMap<P, (Locked<Ba>, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
 	for (peer_id, (backend, importer, status)) in peers {
 		let (sender, receiver) = sync_channel(10);
 		senders.insert(peer_id.clone(), sender);
