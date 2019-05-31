@@ -3,13 +3,12 @@ extern crate parity_codec_derive as codec_derive;
 
 mod runtime;
 
-use blockchain::backend::{SharedMemoryBackend, KeyValueMemoryState, ChainQuery, ImportOperation, Locked};
+use blockchain::backend::{SharedMemoryBackend, KeyValueMemoryState, ChainQuery, ImportOperation, ImportLock};
 use blockchain::import::ImportAction;
 use blockchain::traits::{Block as BlockT, SimpleBuilderExecutor, AsExternalities};
 use blockchain_network_simple::{BestDepthImporter, BestDepthStatusProducer};
 use std::thread;
 use std::collections::HashMap;
-use core::ops::Deref;
 use clap::{App, SubCommand, AppSettings, Arg};
 use crate::runtime::{Block, Executor};
 
@@ -45,30 +44,32 @@ fn main() {
 
 fn local_sync() {
 	let genesis_block = Block::genesis();
-	let backend_build = Locked::new(
+	let (backend_build, lock_build) = (
 		SharedMemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
 			genesis_block.clone(),
 			Default::default()
-		)
+		),
+		ImportLock::new()
 	);
 	let mut peers = HashMap::new();
 	for peer_id in 0..4 {
-		let backend = if peer_id == 0 {
-			backend_build.clone()
+		let (backend, lock) = if peer_id == 0 {
+			(backend_build.clone(), lock_build.clone())
 		} else {
-			Locked::new(
+			(
 				SharedMemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
 					genesis_block.clone(),
 					Default::default()
-				)
+				),
+				ImportLock::new()
 			)
 		};
-		let importer = BestDepthImporter::new(Executor, backend.clone());
+		let importer = BestDepthImporter::new(Executor, backend.clone(), lock.clone());
 		let status = BestDepthStatusProducer::new(backend.clone());
-		peers.insert(peer_id, (backend, importer, status));
+		peers.insert(peer_id, (backend, lock, importer, status));
 	}
 	thread::spawn(move || {
-		builder_thread(backend_build);
+		builder_thread(backend_build, lock_build);
 	});
 
 	blockchain_network_simple::local::start_local_simple_sync(peers);
@@ -76,25 +77,25 @@ fn local_sync() {
 
 fn libp2p_sync(port: &str, author: bool) {
 	let genesis_block = Block::genesis();
-	let backend = Locked::new(
-		SharedMemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
-			genesis_block.clone(),
-			Default::default()
-		)
+	let backend = SharedMemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
+		genesis_block.clone(),
+		Default::default()
 	);
-	let importer = BestDepthImporter::new(Executor, backend.clone());
+	let lock = ImportLock::new();
+	let importer = BestDepthImporter::new(Executor, backend.clone(), lock.clone());
 	let status = BestDepthStatusProducer::new(backend.clone());
 	if author {
 		let backend_build = backend.clone();
+		let lock_build = lock.clone();
 		thread::spawn(move || {
-			builder_thread(backend_build);
+			builder_thread(backend_build, lock_build);
 		});
 	}
-	blockchain_network_simple::libp2p::start_network_simple_sync(port, backend, importer, status);
+	blockchain_network_simple::libp2p::start_network_simple_sync(port, backend, lock, importer, status);
 }
 
 
-fn builder_thread(backend_build: Locked<SharedMemoryBackend<Block, (), KeyValueMemoryState>>) {
+fn builder_thread(backend_build: SharedMemoryBackend<Block, (), KeyValueMemoryState>, lock: ImportLock) {
 	loop {
 		let head = backend_build.head();
 		let executor = Executor;
@@ -114,7 +115,7 @@ fn builder_thread(backend_build: Locked<SharedMemoryBackend<Block, (), KeyValueM
 		let block = unsealed_block.seal();
 
 		// Import the built block.
-		let mut build_importer = ImportAction::new(&executor, backend_build.deref(), backend_build.lock_import());
+		let mut build_importer = ImportAction::new(&executor, &backend_build, lock.lock());
 		let new_block_hash = block.id();
 		let op = ImportOperation { block, state: pending_state };
 		build_importer.import_raw(op);

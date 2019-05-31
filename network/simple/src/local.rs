@@ -5,7 +5,7 @@ use std::sync::{Arc, mpsc::{SyncSender, Receiver, sync_channel}};
 use core::marker::PhantomData;
 use core::hash::Hash;
 use core::fmt::Debug;
-use blockchain::backend::{SharedCommittable, ChainQuery, Locked};
+use blockchain::backend::{SharedCommittable, ChainQuery, ImportLock};
 use blockchain::import::BlockImporter;
 use crate::{SimpleSync, SimpleSyncMessage, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
 
@@ -51,7 +51,8 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 	mut handle: LocalNetworkHandle<P, Ba::Block, St::Status>,
 	receiver: Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>,
 	peer_id: P,
-	backend: Locked<Ba>,
+	backend: Ba,
+	import_lock: ImportLock,
 	importer: I,
 	status: St,
 ) -> JoinHandle<()> where
@@ -66,7 +67,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 		let this_peer_id = peer_id.clone();
 
 		let mut sync = SimpleSync {
-			backend, importer, status,
+			backend, importer, status, import_lock,
 			_marker: PhantomData
 		};
 
@@ -84,7 +85,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 }
 
 pub fn start_local_simple_sync<P, Ba, I, St>(
-	peers: HashMap<P, (Locked<Ba>, I, St)>
+	peers: HashMap<P, (Ba, ImportLock, I, St)>
 ) where
 	P: Debug + Eq + Hash + Clone + Send + Sync + 'static,
 	Ba: SharedCommittable + ChainQuery + Send + Sync + 'static,
@@ -94,16 +95,16 @@ pub fn start_local_simple_sync<P, Ba, I, St>(
 	St::Status: Clone + Debug + Send + Sync,
 {
 	let mut senders: HashMap<P, SyncSender<(P, SimpleSyncMessage<Ba::Block, St::Status>)>> = HashMap::new();
-	let mut peers_with_receivers: HashMap<P, (Locked<Ba>, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
-	for (peer_id, (backend, importer, status)) in peers {
+	let mut peers_with_receivers: HashMap<P, (Ba, ImportLock, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
+	for (peer_id, (backend, import_lock, importer, status)) in peers {
 		let (sender, receiver) = sync_channel(10);
 		senders.insert(peer_id.clone(), sender);
-		peers_with_receivers.insert(peer_id, (backend, importer, status, receiver));
+		peers_with_receivers.insert(peer_id, (backend, import_lock, importer, status, receiver));
 	}
 
 	let mut join_handles: Vec<JoinHandle<()>> = Vec::new();
 	let network = Arc::new(LocalNetwork { senders });
-	for (peer_id, (backend, importer, status, receiver)) in peers_with_receivers {
+	for (peer_id, (backend, import_lock, importer, status, receiver)) in peers_with_receivers {
 		let join_handle = start_local_simple_peer(
 			LocalNetworkHandle {
 				peer_id: peer_id.clone(),
@@ -112,6 +113,7 @@ pub fn start_local_simple_sync<P, Ba, I, St>(
 			receiver,
 			peer_id,
 			backend,
+			import_lock,
 			importer,
 			status,
 		);

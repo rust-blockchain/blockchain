@@ -5,9 +5,8 @@ pub mod libp2p;
 
 use core::marker::PhantomData;
 use core::cmp::Ordering;
-use core::ops::Deref;
 use codec::{Encode, Decode};
-use blockchain::backend::{SharedCommittable, Store, ChainQuery, Locked, Operation};
+use blockchain::backend::{SharedCommittable, Store, ChainQuery, ImportLock, Operation};
 use blockchain::import::{ImportAction, BlockImporter};
 use blockchain::traits::{BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
@@ -41,11 +40,11 @@ impl PartialEq for BestDepthStatus {
 }
 
 pub struct BestDepthStatusProducer<Ba> {
-	backend: Locked<Ba>,
+	backend: Ba,
 }
 
 impl<Ba> BestDepthStatusProducer<Ba> {
-	pub fn new(backend: Locked<Ba>) -> Self {
+	pub fn new(backend: Ba) -> Self {
 		Self { backend }
 	}
 }
@@ -95,7 +94,8 @@ pub enum SimpleSyncMessage<B, S> {
 }
 
 pub struct SimpleSync<P, Ba, I, St> {
-	backend: Locked<Ba>,
+	backend: Ba,
+	import_lock: ImportLock,
 	importer: I,
 	status: St,
 	_marker: PhantomData<P>,
@@ -143,7 +143,7 @@ impl<P, Ba: SharedCommittable + ChainQuery, I: BlockImporter<Block=Ba::Block>, S
 			} => {
 				let mut ret = Vec::new();
 				{
-					let _ = self.backend.lock_import();
+					let _ = self.import_lock.lock();
 					for d in start_depth..(start_depth + count) {
 						match self.backend.lookup_canon_depth(d as usize) {
 							Ok(Some(hash)) => {
@@ -177,7 +177,8 @@ impl<P, Ba: SharedCommittable + ChainQuery, I: BlockImporter<Block=Ba::Block>, S
 }
 
 pub struct BestDepthImporter<E, Ba> {
-	backend: Locked<Ba>,
+	backend: Ba,
+	import_lock: ImportLock,
 	executor: E,
 }
 
@@ -185,8 +186,8 @@ impl<E: BlockExecutor, Ba: ChainQuery + Store<Block=E::Block>> BestDepthImporter
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
 {
-	pub fn new(executor: E, backend: Locked<Ba>) -> Self {
-		Self { backend, executor }
+	pub fn new(executor: E, backend: Ba, import_lock: ImportLock) -> Self {
+		Self { backend, executor, import_lock }
 	}
 }
 
@@ -202,8 +203,8 @@ impl<E: BlockExecutor, Ba: ChainQuery + Store<Block=E::Block>> BlockImporter for
 	fn import_block(&mut self, block: Ba::Block) -> Result<(), Self::Error> {
 		let mut importer = ImportAction::new(
 			&self.executor,
-			self.backend.deref(),
-			self.backend.lock_import()
+			&self.backend,
+			self.import_lock.lock()
 		);
 		let new_hash = block.id();
 		let (current_best_depth, new_depth) = {
