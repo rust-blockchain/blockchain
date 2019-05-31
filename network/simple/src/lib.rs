@@ -19,7 +19,7 @@ pub trait StatusProducer {
 
 #[derive(Eq, Clone, Encode, Decode, Debug)]
 pub struct BestDepthStatus {
-	pub best_depth: usize,
+	pub best_depth: u64,
 }
 
 impl Ord for BestDepthStatus {
@@ -60,7 +60,7 @@ impl<Ba: ChainQuery> StatusProducer for BestDepthStatusProducer<Ba> {
 				.expect("Best block depth hash cannot fail")
 		};
 
-		BestDepthStatus { best_depth }
+		BestDepthStatus { best_depth: best_depth as u64 }
 	}
 }
 
@@ -86,8 +86,8 @@ pub trait NetworkEvent: NetworkEnvironment {
 pub enum SimpleSyncMessage<B, S> {
 	Status(S),
 	BlockRequest {
-		start_depth: usize,
-		count: usize,
+		start_depth: u64,
+		count: u64,
 	},
 	BlockResponse {
 		blocks: Vec<B>,
@@ -132,7 +132,7 @@ impl<P, Ba: SharedCommittable + ChainQuery, I: BlockImporter<Block=Ba::Block>, S
 
 				if peer_status > status {
 					handle.send(peer, SimpleSyncMessage::BlockRequest {
-						start_depth: best_depth + 1,
+						start_depth: best_depth as u64 + 1,
 						count: 256,
 					});
 				}
@@ -145,7 +145,7 @@ impl<P, Ba: SharedCommittable + ChainQuery, I: BlockImporter<Block=Ba::Block>, S
 				{
 					let _ = self.backend.lock_import();
 					for d in start_depth..(start_depth + count) {
-						match self.backend.lookup_canon_depth(d) {
+						match self.backend.lookup_canon_depth(d as usize) {
 							Ok(Some(hash)) => {
 								let block = self.backend.block_at(&hash)
 									.expect("Found hash cannot fail");
