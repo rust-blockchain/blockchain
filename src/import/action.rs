@@ -1,11 +1,11 @@
 use std::sync::MutexGuard;
 use super::Error;
-use crate::backend::SharedCommittable;
-use crate::traits::{Operation, ImportOperation, Block, BlockExecutor, Backend, AsExternalities, Auxiliary, ChainQuery};
+use crate::backend::{SharedCommittable, Store, ChainQuery, Operation, ImportOperation};
+use crate::traits::{Block, BlockExecutor, AsExternalities, Auxiliary};
 
 /// Block importer.
 pub struct ImportAction<'a, 'executor, E: BlockExecutor, Ba> where
-	Ba: Backend<Block=E::Block> + ?Sized,
+	Ba: Store<Block=E::Block> + ?Sized,
 	Ba::Auxiliary: Auxiliary<E::Block>
 {
 	executor: &'executor E,
@@ -16,7 +16,7 @@ pub struct ImportAction<'a, 'executor, E: BlockExecutor, Ba> where
 
 impl<'a, 'executor, E: BlockExecutor, Ba> From<ImportAction<'a, 'executor, E, Ba>> for
 	Operation<E::Block, Ba::State, Ba::Auxiliary> where
-	Ba: Backend<Block=E::Block> + ?Sized,
+	Ba: Store<Block=E::Block> + ?Sized,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 {
 	fn from(
@@ -27,9 +27,10 @@ impl<'a, 'executor, E: BlockExecutor, Ba> From<ImportAction<'a, 'executor, E, Ba
 }
 
 impl<'a, 'executor, E: BlockExecutor, Ba> ImportAction<'a, 'executor, E, Ba> where
-	Ba: SharedCommittable + Backend<Block=E::Block> + ChainQuery + ?Sized,
+	Ba: Store<Block=E::Block> + ChainQuery + ?Sized,
 	Ba::Auxiliary: Auxiliary<E::Block>,
 	Ba::State: AsExternalities<E::Externalities>,
+	Ba: SharedCommittable<Operation=Operation<E::Block, <Ba as Store>::State, <Ba as Store>::Auxiliary>>,
 	Error: From<E::Error> + From<Ba::Error>,
 {
 	/// Create a new import action.

@@ -1,19 +1,28 @@
-use std::collections::HashMap;
 use std::{fmt, error as stderror};
-use std::convert::Infallible;
-
-use crate::traits::{
-	AsExternalities, Backend, NullExternalities,
-	StorageExternalities, Block, Auxiliary,
-	ChainQuery,
-};
-use super::{BlockData, Database, DirectBackend};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use crate::traits::{Block, Auxiliary};
+use crate::backend::{Store, BlockData, ChainQuery, ChainSettlement, Operation, Committable, SharedCommittable, OperationError};
 
 #[derive(Debug)]
 /// Memory errors
 pub enum Error {
-	/// Block trying to query does not exist in the backend.
+	/// Invalid Operation
+	InvalidOperation,
+	/// Trying to import a block that is genesis
+	IsGenesis,
+	/// Query does not exist
 	NotExist,
+}
+
+impl OperationError for Error {
+	fn invalid_operation() -> Self {
+		Error::InvalidOperation
+	}
+
+	fn block_is_genesis() -> Self {
+		Error::IsGenesis
+	}
 }
 
 impl fmt::Display for Error {
@@ -26,93 +35,10 @@ impl stderror::Error for Error { }
 
 impl From<Error> for crate::import::Error {
 	fn from(error: Error) -> Self {
-		crate::import::Error::Backend(Box::new(error))
-	}
-}
-
-impl From<Error> for crate::backend::DirectError {
-	fn from(error: Error) -> Self {
 		match error {
-			Error::NotExist => crate::backend::DirectError::NotExist,
+			Error::IsGenesis => crate::import::Error::IsGenesis,
+			error => crate::import::Error::Backend(Box::new(error)),
 		}
-	}
-}
-
-/// A backend type that stores all information in memory.
-pub trait MemoryLikeBackend: Backend {
-	/// Create a new memory backend from a genesis block.
-	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self;
-}
-
-impl<DB: Database + MemoryLikeBackend> MemoryLikeBackend for DirectBackend<DB> {
-	fn new_with_genesis(block: Self::Block, genesis_state: Self::State) -> Self {
-		DirectBackend::new(DB::new_with_genesis(block, genesis_state))
-	}
-}
-
-/// State stored in memory.
-#[derive(Clone, Default)]
-pub struct KeyValueMemoryState {
-	storage: HashMap<Vec<u8>, Vec<u8>>,
-}
-
-impl AsRef<HashMap<Vec<u8>, Vec<u8>>> for KeyValueMemoryState {
-	fn as_ref(&self) -> &HashMap<Vec<u8>, Vec<u8>> {
-		&self.storage
-	}
-}
-
-impl AsMut<HashMap<Vec<u8>, Vec<u8>>> for KeyValueMemoryState {
-	fn as_mut(&mut self) -> &mut HashMap<Vec<u8>, Vec<u8>> {
-		&mut self.storage
-	}
-}
-
-impl NullExternalities for KeyValueMemoryState { }
-
-impl AsExternalities<dyn NullExternalities> for KeyValueMemoryState {
-	fn as_externalities(&mut self) -> &mut (dyn NullExternalities + 'static) {
-		self
-	}
-}
-
-impl StorageExternalities<Infallible> for KeyValueMemoryState {
-	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Infallible> {
-		Ok(self.storage.get(key).map(|value| value.to_vec()))
-	}
-
-	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>) {
-		self.storage.insert(key, value);
-	}
-
-	fn remove_storage(&mut self, key: &[u8]) {
-		self.storage.remove(key);
-	}
-}
-
-impl StorageExternalities<Box<stderror::Error>> for KeyValueMemoryState {
-	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<stderror::Error>> {
-		Ok(self.storage.get(key).map(|value| value.to_vec()))
-	}
-
-	fn write_storage(&mut self, key: Vec<u8>, value: Vec<u8>) {
-		self.storage.insert(key, value);
-	}
-
-	fn remove_storage(&mut self, key: &[u8]) {
-		self.storage.remove(key);
-	}
-}
-
-impl AsExternalities<dyn StorageExternalities<Infallible>> for KeyValueMemoryState {
-	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Infallible> + 'static) {
-		self
-	}
-}
-
-impl AsExternalities<dyn StorageExternalities<Box<stderror::Error>>> for KeyValueMemoryState {
-	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Box<stderror::Error>> + 'static) {
-		self
 	}
 }
 
@@ -125,87 +51,16 @@ pub struct MemoryDatabase<B: Block, A: Auxiliary<B>, S> {
 	auxiliaries: HashMap<A::Key, A>,
 }
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> Backend for MemoryDatabase<B, A, S> {
+impl<B: Block, A: Auxiliary<B>, S: Clone> Store for MemoryDatabase<B, A, S> {
 	type Block = B;
 	type State = S;
 	type Auxiliary = A;
 	type Error = Error;
 }
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> Database for MemoryDatabase<B, A, S> {
-	fn insert_block(
-		&mut self,
-		id: <Self::Block as Block>::Identifier,
-		block: Self::Block,
-		state: Self::State,
-		depth: usize,
-		children: Vec<<Self::Block as Block>::Identifier>,
-		is_canon: bool
-	) {
-		self.blocks_and_states.insert(id, BlockData {
-			block, state, depth, children, is_canon
-		});
-	}
-	fn push_child(
-		&mut self,
-		id: <Self::Block as Block>::Identifier,
-		child: <Self::Block as Block>::Identifier,
-	) {
-		self.blocks_and_states.get_mut(&id)
-			.expect("Internal database error")
-			.children.push(child);
-	}
-	fn set_canon(
-		&mut self,
-		id: <Self::Block as Block>::Identifier,
-		is_canon: bool
-	) {
-		self.blocks_and_states.get_mut(&id)
-			.expect("Internal database error")
-			.is_canon = is_canon;
-	}
-	fn insert_canon_depth_mapping(
-		&mut self,
-		depth: usize,
-		id: <Self::Block as Block>::Identifier,
-	) {
-		self.canon_depth_mappings.insert(depth, id);
-	}
-	fn remove_canon_depth_mapping(
-		&mut self,
-		depth: &usize
-	) {
-		self.canon_depth_mappings.remove(depth);
-	}
-	fn insert_auxiliary(
-		&mut self,
-		key: <Self::Auxiliary as Auxiliary<Self::Block>>::Key,
-		value: Self::Auxiliary
-	) {
-		self.auxiliaries.insert(key, value);
-	}
-	fn remove_auxiliary(
-		&mut self,
-		key: &<Self::Auxiliary as Auxiliary<Self::Block>>::Key,
-	) {
-		self.auxiliaries.remove(key);
-	}
-	fn set_head(
-		&mut self,
-		head: <Self::Block as Block>::Identifier
-	) {
-		self.head = head;
-	}
-}
-
 impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryDatabase<B, A, S> {
-	fn head(&self) -> B::Identifier {
-		self.head
-	}
-
-	fn genesis(&self) -> B::Identifier {
-		self.genesis
-	}
+	fn head(&self) -> B::Identifier { self.head }
+	fn genesis(&self) -> B::Identifier { self.genesis }
 
 	fn contains(
 		&self,
@@ -275,11 +130,78 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryDatabase<B, A, S>
 	}
 }
 
-/// Memory direct backend.
-pub type MemoryBackend<B, A, S> = DirectBackend<MemoryDatabase<B, A, S>>;
+impl<B: Block, A: Auxiliary<B>, S: Clone> ChainSettlement for MemoryDatabase<B, A, S> {
+	fn insert_block(
+		&mut self,
+		id: <Self::Block as Block>::Identifier,
+		block: Self::Block,
+		state: Self::State,
+		depth: usize,
+		children: Vec<<Self::Block as Block>::Identifier>,
+		is_canon: bool
+	) {
+		self.blocks_and_states.insert(id, BlockData {
+			block, state, depth, children, is_canon
+		});
+	}
+	fn push_child(
+		&mut self,
+		id: <Self::Block as Block>::Identifier,
+		child: <Self::Block as Block>::Identifier,
+	) {
+		self.blocks_and_states.get_mut(&id)
+			.expect("Internal database error")
+			.children.push(child);
+	}
+	fn set_canon(
+		&mut self,
+		id: <Self::Block as Block>::Identifier,
+		is_canon: bool
+	) {
+		self.blocks_and_states.get_mut(&id)
+			.expect("Internal database error")
+			.is_canon = is_canon;
+	}
+	fn insert_canon_depth_mapping(
+		&mut self,
+		depth: usize,
+		id: <Self::Block as Block>::Identifier,
+	) {
+		self.canon_depth_mappings.insert(depth, id);
+	}
+	fn remove_canon_depth_mapping(
+		&mut self,
+		depth: &usize
+	) {
+		self.canon_depth_mappings.remove(depth);
+	}
+	fn insert_auxiliary(
+		&mut self,
+		key: <Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+		value: Self::Auxiliary
+	) {
+		self.auxiliaries.insert(key, value);
+	}
+	fn remove_auxiliary(
+		&mut self,
+		key: &<Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+	) {
+		self.auxiliaries.remove(key);
+	}
+	fn set_head(
+		&mut self,
+		head: <Self::Block as Block>::Identifier
+	) {
+		self.head = head;
+	}
+}
 
-impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryDatabase<B, A, S> {
-	fn new_with_genesis(block: B, genesis_state: S) -> Self {
+/// Memory backend
+pub struct MemoryBackend<B: Block, A: Auxiliary<B>, S>(MemoryDatabase<B, A, S>);
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryBackend<B, A, S> {
+	/// Create a new memory backend from genesis.
+	pub fn new_with_genesis(block: B, genesis_state: S) -> Self {
 		assert!(block.parent_id().is_none(), "with_genesis must be provided with a genesis block");
 
 		let genesis_id = block.id();
@@ -297,73 +219,180 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryLikeBackend for MemoryDatabase<B
 		let mut canon_depth_mappings = HashMap::new();
 		canon_depth_mappings.insert(0, genesis_id);
 
-		MemoryDatabase {
+		Self(MemoryDatabase {
 			blocks_and_states,
 			canon_depth_mappings,
 			auxiliaries: Default::default(),
 			genesis: genesis_id,
 			head: genesis_id,
-		}
+		})
 	}
 }
 
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::traits::*;
-	use crate::backend::{RwLockBackend, SharedCommittable};
-	use std::convert::Infallible;
+impl<B: Block, A: Auxiliary<B>, S: Clone> Store for MemoryBackend<B, A, S> {
+	type Block = B;
+	type State = S;
+	type Auxiliary = A;
+	type Error = Error;
+}
 
-	#[derive(Clone)]
-	pub struct DummyBlock {
-		id: usize,
-		parent_id: usize,
+impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryBackend<B, A, S> {
+	fn genesis(&self) -> <Self::Block as Block>::Identifier {
+		self.0.genesis()
 	}
-
-	impl Block for DummyBlock {
-		type Identifier = usize;
-
-		fn id(&self) -> usize { self.id }
-		fn parent_id(&self) -> Option<usize> { if self.parent_id == 0 { None } else { Some(self.parent_id) } }
+	fn head(&self) -> <Self::Block as Block>::Identifier {
+		self.0.head()
 	}
-
-	pub trait CombinedExternalities: NullExternalities + StorageExternalities<Infallible> { }
-
-	impl<T: NullExternalities + StorageExternalities<Infallible>> CombinedExternalities for T { }
-
-	impl<T: CombinedExternalities + 'static> AsExternalities<dyn CombinedExternalities> for T {
-		fn as_externalities(&mut self) -> &mut (dyn CombinedExternalities + 'static) {
-			self
-		}
+	fn contains(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<bool, Self::Error> {
+		Ok(self.0.contains(hash)?)
 	}
-
-	pub struct DummyExecutor;
-
-	impl BlockExecutor for DummyExecutor {
-		type Error = Error;
-		type Block = DummyBlock;
-		type Externalities = dyn CombinedExternalities + 'static;
-
-		fn execute_block(
-			&self,
-			_block: &DummyBlock,
-			_state: &mut (dyn CombinedExternalities + 'static),
-		) -> Result<(), Error> {
-			Ok(())
-		}
+	fn is_canon(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<bool, Self::Error> {
+		Ok(self.0.is_canon(hash)?)
 	}
+	fn lookup_canon_depth(
+		&self,
+		depth: usize,
+	) -> Result<Option<<Self::Block as Block>::Identifier>, Self::Error> {
+		Ok(self.0.lookup_canon_depth(depth)?)
+	}
+	fn auxiliary(
+		&self,
+		key: &<Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+	) -> Result<Option<Self::Auxiliary>, Self::Error> {
+		Ok(self.0.auxiliary(key)?)
+	}
+	fn depth_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<usize, Self::Error> {
+		Ok(self.0.depth_at(hash)?)
+	}
+	fn children_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Vec<<Self::Block as Block>::Identifier>, Self::Error> {
+		Ok(self.0.children_at(hash)?)
+	}
+	fn state_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Self::State, Self::Error> {
+		Ok(self.0.state_at(hash)?)
+	}
+	fn block_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Self::Block, Self::Error> {
+		Ok(self.0.block_at(hash)?)
+	}
+}
 
-	#[test]
-	fn all_traits_for_importer_are_satisfied() {
-		let backend = MemoryBackend::<_, (), KeyValueMemoryState>::new_with_genesis(
-			DummyBlock {
-				id: 1,
-				parent_id: 0,
-			},
-			Default::default()
-		);
-		let executor = DummyExecutor;
-		let shared = RwLockBackend::new(backend);
-		let _ = shared.begin_action(&executor);
+impl<B: Block, A: Auxiliary<B>, S: Clone> Committable for MemoryBackend<B, A, S> {
+	type Operation = Operation<Self::Block, Self::State, Self::Auxiliary>;
+
+	fn commit(
+		&mut self,
+		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
+	) -> Result<(), Self::Error> {
+		operation.settle(&mut self.0)
+	}
+}
+
+/// Shared memory backend
+pub struct SharedMemoryBackend<B: Block, A: Auxiliary<B>, S>(
+	Arc<RwLock<MemoryBackend<B, A, S>>>
+);
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> SharedMemoryBackend<B, A, S> {
+	/// Create a new memory backend from genesis.
+	pub fn new_with_genesis(block: B, genesis_state: S) -> Self {
+		Self(Arc::new(RwLock::new(MemoryBackend::new_with_genesis(block, genesis_state))))
+	}
+}
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> Store for SharedMemoryBackend<B, A, S> {
+	type Block = B;
+	type State = S;
+	type Auxiliary = A;
+	type Error = Error;
+}
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for SharedMemoryBackend<B, A, S> {
+	fn genesis(&self) -> <Self::Block as Block>::Identifier {
+		self.0.read().expect("Lock is poisoned").genesis()
+	}
+	fn head(&self) -> <Self::Block as Block>::Identifier {
+		self.0.read().expect("Lock is poisoned").head()
+	}
+	fn contains(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<bool, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").contains(hash)?)
+	}
+	fn is_canon(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<bool, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").is_canon(hash)?)
+	}
+	fn lookup_canon_depth(
+		&self,
+		depth: usize,
+	) -> Result<Option<<Self::Block as Block>::Identifier>, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").lookup_canon_depth(depth)?)
+	}
+	fn auxiliary(
+		&self,
+		key: &<Self::Auxiliary as Auxiliary<Self::Block>>::Key,
+	) -> Result<Option<Self::Auxiliary>, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").auxiliary(key)?)
+	}
+	fn depth_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<usize, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").depth_at(hash)?)
+	}
+	fn children_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Vec<<Self::Block as Block>::Identifier>, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").children_at(hash)?)
+	}
+	fn state_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Self::State, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").state_at(hash)?)
+	}
+	fn block_at(
+		&self,
+		hash: &<Self::Block as Block>::Identifier,
+	) -> Result<Self::Block, Self::Error> {
+		Ok(self.0.read().expect("Lock is poisoned").block_at(hash)?)
+	}
+}
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> Clone for SharedMemoryBackend<B, A, S> {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl<B: Block, A: Auxiliary<B>, S: Clone> SharedCommittable for SharedMemoryBackend<B, A, S> {
+	type Operation = Operation<Self::Block, Self::State, Self::Auxiliary>;
+
+	fn commit(
+		&self,
+		operation: Operation<Self::Block, Self::State, Self::Auxiliary>,
+	) -> Result<(), Self::Error> {
+		self.0.write().expect("Lock is poisoned").commit(operation)
 	}
 }

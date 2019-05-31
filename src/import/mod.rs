@@ -1,28 +1,13 @@
 //! Chain importer and block builder.
 
 mod action;
+mod traits;
 
 pub use self::action::ImportAction;
+pub use self::traits::{RawImporter, SharedRawImporter, BlockImporter, SharedBlockImporter};
 
-use crate::traits::{BlockImporter, RawImporter, ImportOperation};
 use std::sync::{Arc, Mutex};
 use std::{fmt, error as stderror};
-
-/// Shared raw importer.
-pub trait SharedRawImporter: RawImporter + Clone {
-	/// Commit a prebuilt block into the backend, and handle consensus and
-	/// auxiliary.
-	fn import_raw(
-		&self,
-		operation: ImportOperation<Self::Block, Self::State>
-	) -> Result<(), Self::Error>;
-}
-
-/// Shared block importer.
-pub trait SharedBlockImporter: BlockImporter + Clone {
-	/// Commit a block into the backend, and handle consensus and auxiliary.
-	fn import_block(&self, block: Self::Block) -> Result<(), Self::Error>;
-}
 
 /// Error type for chain.
 #[derive(Debug)]
@@ -95,13 +80,12 @@ impl<I: BlockImporter> SharedBlockImporter for MutexImporter<I> {
 }
 
 impl<I: RawImporter> RawImporter for MutexImporter<I> {
-	type Block = I::Block;
-	type State = I::State;
+	type Operation = I::Operation;
 	type Error = I::Error;
 
 	fn import_raw(
 		&mut self,
-		raw: ImportOperation<Self::Block, Self::State>
+		raw: Self::Operation
 	) -> Result<(), Self::Error> {
 		SharedRawImporter::import_raw(self, raw)
 	}
@@ -110,7 +94,7 @@ impl<I: RawImporter> RawImporter for MutexImporter<I> {
 impl<I: RawImporter> SharedRawImporter for MutexImporter<I> {
 	fn import_raw(
 		&self,
-		raw: ImportOperation<<Self as RawImporter>::Block, <Self as RawImporter>::State>
+		raw: Self::Operation
 	) -> Result<(), <Self as RawImporter>::Error> {
 		self.importer.lock().expect("Lock is poisoned")
 			.import_raw(raw)

@@ -17,7 +17,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Substrate.  If not, see <http://www.gnu.org/licenses/>.
 
-use crate::traits::{ChainQuery, Block};
+use crate::traits::Block;
+use crate::backend::ChainQuery;
 
 /// A tree-route from one block to another in the chain.
 ///
