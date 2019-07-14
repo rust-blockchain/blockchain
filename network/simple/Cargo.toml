@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 blockchain = { version = "0.8", path = "../.." }
 libp2p = "0.8"
-parity-codec = { version = "3.0", features = ["derive"] }
+parity-codec = { version = "4.0", features = ["derive"] }
 futures = "0.1"
 tokio = "0.1"
 tokio-io = "0.1"
