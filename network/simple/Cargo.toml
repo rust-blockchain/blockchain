@@ -1,6 +1,6 @@
 [package]
 name = "blockchain-network-simple"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Wei Tang <hi@that.world>"]
 description = "Simple network interface for blockchain"
 license = "GPL-3.0"
