@@ -5,9 +5,8 @@ authors = ["Wei Tang <hi@that.world>"]
 edition = "2018"
 
 [dependencies]
-primitive-types = { version = "0.2", features = ["codec"] }
-parity-codec = "3.0"
-parity-codec-derive = "3.0"
+primitive-types = { version = "0.4", features = ["codec"] }
+parity-codec = { version = "4.0", features = ["derive"] }
 blockchain = { version = "0.8", path = "../.." }
 blockchain-network-simple = { version = "0.4", path = "../../network/simple" }
 sha3 = "0.8"
