@@ -71,7 +71,7 @@ pub enum Extrinsic {
 
 #[derive(Debug)]
 pub enum Error {
-	Backend(Box<std::error::Error>),
+	Backend(Box<dyn std::error::Error>),
 	DifficultyTooLow,
 	StateCorruption,
 }

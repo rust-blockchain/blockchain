@@ -43,8 +43,8 @@ impl StorageExternalities<Infallible> for KeyValueMemoryState {
 	}
 }
 
-impl StorageExternalities<Box<stderror::Error>> for KeyValueMemoryState {
-	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<stderror::Error>> {
+impl StorageExternalities<Box<dyn stderror::Error>> for KeyValueMemoryState {
+	fn read_storage(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Box<dyn stderror::Error>> {
 		Ok(self.storage.get(key).map(|value| value.to_vec()))
 	}
 
@@ -63,8 +63,8 @@ impl AsExternalities<dyn StorageExternalities<Infallible>> for KeyValueMemorySta
 	}
 }
 
-impl AsExternalities<dyn StorageExternalities<Box<stderror::Error>>> for KeyValueMemoryState {
-	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Box<stderror::Error>> + 'static) {
+impl AsExternalities<dyn StorageExternalities<Box<dyn stderror::Error>>> for KeyValueMemoryState {
+	fn as_externalities(&mut self) -> &mut (dyn StorageExternalities<Box<dyn stderror::Error>> + 'static) {
 		self
 	}
 }

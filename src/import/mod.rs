@@ -13,9 +13,9 @@ use std::{fmt, error as stderror};
 #[derive(Debug)]
 pub enum Error {
 	/// Backend error.
-	Backend(Box<stderror::Error>),
+	Backend(Box<dyn stderror::Error>),
 	/// Executor error.
-	Executor(Box<stderror::Error>),
+	Executor(Box<dyn stderror::Error>),
 	/// Block is genesis block and cannot be imported.
 	IsGenesis,
 	/// Parent is not in the backend so block cannot be imported.

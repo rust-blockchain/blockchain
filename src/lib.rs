@@ -2,6 +2,6 @@
 
 #![warn(missing_docs)]
 
-pub mod traits;
+pub use blockchain_traits as traits;
 pub mod import;
 pub mod backend;

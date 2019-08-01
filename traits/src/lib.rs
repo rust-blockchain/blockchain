@@ -1,7 +1,13 @@
 //! Common trait definitions related to block context.
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+#[cfg(feature = "std")]
 use std::error as stderror;
-use std::hash;
+use alloc::vec::Vec;
+use core::hash;
 
 /// A block contains a hash, and reference a parent block via parent hash.
 pub trait Block: Clone {
@@ -57,8 +63,12 @@ pub trait StorageExternalities<Error> {
 
 /// Block executor
 pub trait BlockExecutor {
+	#[cfg(feature = "std")]
 	/// Error type
 	type Error: stderror::Error + 'static;
+	#[cfg(not(feature = "std"))]
+	/// Error type
+	type Error: 'static;
 	/// Block type
 	type Block: Block;
 	/// Externalities type
