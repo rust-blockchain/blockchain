@@ -45,6 +45,13 @@ pub trait AsExternalities<E: ?Sized> {
 /// Null externalities.
 pub trait NullExternalities { }
 
+impl NullExternalities for () { }
+impl AsExternalities<dyn NullExternalities> for () {
+	fn as_externalities(&mut self) -> &mut (dyn NullExternalities + 'static) {
+		self
+	}
+}
+
 /// Externalities for reading a key value based storage.
 pub trait StorageExternalities<Error> {
 	/// Read storage value.

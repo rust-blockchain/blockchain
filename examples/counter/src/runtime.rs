@@ -157,19 +157,20 @@ impl SimpleBuilderExecutor for Executor {
 
 	fn apply_extrinsic(
 		&self,
-		_block: &mut Self::BuildBlock,
+		block: &mut Self::BuildBlock,
 		extrinsic: Self::Extrinsic,
 		state: &mut Self::Externalities,
 	) -> Result<(), Self::Error> {
 		let mut counter = self.read_counter(state)?;
 
-		match extrinsic {
+		match &extrinsic {
 			Extrinsic::Add(add) => {
 				counter += add;
 			},
 		}
 
 		self.write_counter(counter, state);
+		block.extrinsics.push(extrinsic);
 
 		Ok(())
 	}

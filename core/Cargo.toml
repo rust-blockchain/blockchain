@@ -1,6 +1,6 @@
 [package]
 name = "blockchain-core"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Wei Tang <hi@that.world>"]
 description = "Traits for blockchain"
 license = "GPL-3.0"
