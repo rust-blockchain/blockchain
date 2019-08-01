@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::traits::{Block, Auxiliary};
+use crate::{Block, Auxiliary};
 use crate::backend::{tree_route, Store, ChainQuery, ChainSettlement, OperationError};
 
 /// Representing raw block data.

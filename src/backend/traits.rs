@@ -1,5 +1,5 @@
 use std::error as stderror;
-use crate::traits::{Block, Auxiliary};
+use crate::{Block, Auxiliary};
 
 /// Backend store definition for a block context.
 pub trait Store {

@@ -1,5 +1,5 @@
 use primitive_types::H256;
-use blockchain::traits::{
+use blockchain::{
 	Block as BlockT, BlockExecutor,
 	SimpleBuilderExecutor, StorageExternalities,
 };

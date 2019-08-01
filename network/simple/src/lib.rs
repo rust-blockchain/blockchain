@@ -8,7 +8,7 @@ use core::cmp::Ordering;
 use codec::{Encode, Decode};
 use blockchain::backend::{SharedCommittable, Store, ChainQuery, ImportLock, Operation};
 use blockchain::import::{ImportAction, BlockImporter};
-use blockchain::traits::{BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
+use blockchain::{BlockExecutor, Auxiliary, AsExternalities, Block as BlockT};
 
 pub trait StatusProducer {
 	type Status: Ord + Encode + Decode;

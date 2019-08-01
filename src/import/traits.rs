@@ -1,5 +1,5 @@
 use std::error as stderror;
-use crate::traits::Block;
+use crate::Block;
 
 /// Trait used for committing blocks, usually built on top of a backend.
 pub trait BlockImporter {

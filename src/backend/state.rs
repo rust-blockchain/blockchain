@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error as stderror;
 use core::convert::Infallible;
-use crate::traits::{StorageExternalities, NullExternalities, AsExternalities};
+use crate::{StorageExternalities, NullExternalities, AsExternalities};
 
 /// State stored in memory.
 #[derive(Clone, Default)]

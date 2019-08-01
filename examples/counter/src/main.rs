@@ -4,7 +4,7 @@ mod runtime;
 
 use blockchain::backend::{SharedMemoryBackend, KeyValueMemoryState, ChainQuery, ImportOperation, ImportLock};
 use blockchain::import::ImportAction;
-use blockchain::traits::{Block as BlockT, SimpleBuilderExecutor, AsExternalities};
+use blockchain::{Block as BlockT, SimpleBuilderExecutor, AsExternalities};
 use blockchain_network_simple::{BestDepthImporter, BestDepthStatusProducer};
 use std::thread;
 use std::collections::HashMap;

@@ -1,5 +1,5 @@
 [package]
-name = "blockchain-traits"
+name = "blockchain-core"
 version = "0.1.0"
 authors = ["Wei Tang <hi@that.world>"]
 description = "Traits for blockchain"

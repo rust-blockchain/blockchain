@@ -1,7 +1,7 @@
 use std::sync::MutexGuard;
 use super::Error;
 use crate::backend::{SharedCommittable, Store, ChainQuery, Operation, ImportOperation};
-use crate::traits::{Block, BlockExecutor, AsExternalities, Auxiliary};
+use crate::{Block, BlockExecutor, AsExternalities, Auxiliary};
 
 /// Block importer.
 pub struct ImportAction<'a, 'executor, E: BlockExecutor, Ba> where

@@ -1,9 +1,3 @@
-//! Common trait definitions related to block context.
-
-#![cfg_attr(not(feature = "std"), no_std)]
-
-extern crate alloc;
-
 #[cfg(feature = "std")]
 use std::error as stderror;
 use alloc::vec::Vec;

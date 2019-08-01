@@ -1,7 +1,7 @@
 use std::{fmt, error as stderror};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use crate::traits::{Block, Auxiliary};
+use crate::{Block, Auxiliary};
 use crate::backend::{Store, BlockData, ChainQuery, ChainSettlement, Operation, Committable, SharedCommittable, OperationError};
 
 #[derive(Debug)]

@@ -1,13 +1,13 @@
 [package]
 name = "blockchain"
-version = "0.8.2"
+version = "0.9.0"
 authors = ["Wei Tang <hi@that.world>"]
 description = "Unopinioned blockchain framework"
 license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]
-blockchain-traits = { version = "0.1", path = "traits" }
+blockchain-core = { version = "0.1", path = "core" }
 
 [workspace]
 members = [
