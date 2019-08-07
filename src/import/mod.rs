@@ -16,6 +16,8 @@ pub enum Error {
 	Backend(Box<dyn stderror::Error>),
 	/// Executor error.
 	Executor(Box<dyn stderror::Error>),
+	/// Custom error.
+	Custom(Box<dyn stderror::Error>),
 	/// Block is genesis block and cannot be imported.
 	IsGenesis,
 	/// Parent is not in the backend so block cannot be imported.
