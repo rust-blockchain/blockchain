@@ -35,6 +35,7 @@ impl stderror::Error for Error {
 		match self {
 			Error::Backend(e) => Some(e.as_ref()),
 			Error::Executor(e) => Some(e.as_ref()),
+			Error::Custom(e) => Some(e.as_ref()),
 			Error::IsGenesis | Error::ParentNotFound => None,
 		}
 	}
