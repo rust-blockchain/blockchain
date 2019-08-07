@@ -59,8 +59,8 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> Store for MemoryDatabase<B, A, S> {
 }
 
 impl<B: Block, A: Auxiliary<B>, S: Clone> ChainQuery for MemoryDatabase<B, A, S> {
-	fn head(&self) -> B::Identifier { self.head }
-	fn genesis(&self) -> B::Identifier { self.genesis }
+	fn head(&self) -> B::Identifier { self.head.clone() }
+	fn genesis(&self) -> B::Identifier { self.genesis.clone() }
 
 	fn contains(
 		&self,
@@ -217,13 +217,13 @@ impl<B: Block, A: Auxiliary<B>, S: Clone> MemoryBackend<B, A, S> {
 			}
 		);
 		let mut canon_depth_mappings = HashMap::new();
-		canon_depth_mappings.insert(0, genesis_id);
+		canon_depth_mappings.insert(0, genesis_id.clone());
 
 		Self(MemoryDatabase {
 			blocks_and_states,
 			canon_depth_mappings,
 			auxiliaries: Default::default(),
-			genesis: genesis_id,
+			genesis: genesis_id.clone(),
 			head: genesis_id,
 		})
 	}

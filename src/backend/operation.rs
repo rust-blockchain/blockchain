@@ -141,17 +141,17 @@ impl<B: Block, S, A: Auxiliary<B>> Operation<B, S, A> {
 				.expect("Blocks are checked to exist or importing; qed");
 
 			for id in route.retracted() {
-				backend.set_canon(*id, false);
+				backend.set_canon(id.clone(), false);
 				let depth = backend.depth_at(id)
 					.expect("Block is fetched from tree_route; it must exist; qed");
 				backend.remove_canon_depth_mapping(&depth);
 			}
 
 			for id in route.enacted() {
-				backend.set_canon(*id, true);
+				backend.set_canon(id.clone(), true);
 				let depth = backend.depth_at(id)
 					.expect("Block is fetched from tree_route; it must exist; qed");
-				backend.insert_canon_depth_mapping(depth, *id);
+				backend.insert_canon_depth_mapping(depth, id.clone());
 			}
 
 			backend.set_head(new_head);

@@ -6,7 +6,7 @@ use core::hash;
 /// A block contains a hash, and reference a parent block via parent hash.
 pub trait Block: Clone {
 	/// Hash type of the block.
-	type Identifier: Copy + Eq + hash::Hash;
+	type Identifier: Clone + Eq + hash::Hash;
 
 	/// Get the block hash.
 	fn id(&self) -> Self::Identifier;
@@ -17,7 +17,7 @@ pub trait Block: Clone {
 /// A value where the key is contained in.
 pub trait Auxiliary<B: Block>: Clone {
 	/// Key type
-	type Key: Copy + Eq + hash::Hash;
+	type Key: Clone + Eq + hash::Hash;
 
 	/// Return the key of this object.
 	fn key(&self) -> Self::Key;
