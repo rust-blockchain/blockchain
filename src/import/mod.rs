@@ -7,39 +7,6 @@ pub use self::action::ImportAction;
 pub use self::traits::{RawImporter, SharedRawImporter, BlockImporter, SharedBlockImporter};
 
 use std::sync::{Arc, Mutex};
-use std::{fmt, error as stderror};
-
-/// Error type for chain.
-#[derive(Debug)]
-pub enum Error {
-	/// Backend error.
-	Backend(Box<dyn stderror::Error>),
-	/// Executor error.
-	Executor(Box<dyn stderror::Error>),
-	/// Custom error.
-	Custom(Box<dyn stderror::Error>),
-	/// Block is genesis block and cannot be imported.
-	IsGenesis,
-	/// Parent is not in the backend so block cannot be imported.
-	ParentNotFound,
-}
-
-impl fmt::Display for Error {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "{:?}", self)
-	}
-}
-
-impl stderror::Error for Error {
-	fn source(&self) -> Option<&(dyn stderror::Error + 'static)> {
-		match self {
-			Error::Backend(e) => Some(e.as_ref()),
-			Error::Executor(e) => Some(e.as_ref()),
-			Error::Custom(e) => Some(e.as_ref()),
-			Error::IsGenesis | Error::ParentNotFound => None,
-		}
-	}
-}
 
 /// An importer that can be shared across threads.
 pub struct MutexImporter<I> {

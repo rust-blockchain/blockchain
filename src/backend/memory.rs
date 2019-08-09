@@ -33,15 +33,6 @@ impl fmt::Display for Error {
 
 impl stderror::Error for Error { }
 
-impl From<Error> for crate::import::Error {
-	fn from(error: Error) -> Self {
-		match error {
-			Error::IsGenesis => crate::import::Error::IsGenesis,
-			error => crate::import::Error::Backend(Box::new(error)),
-		}
-	}
-}
-
 /// Database backed by memory.
 pub struct MemoryDatabase<B: Block, A: Auxiliary<B>, S> {
 	blocks_and_states: HashMap<B::Identifier, BlockData<B, S>>,
