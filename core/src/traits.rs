@@ -36,10 +36,21 @@ impl<B: Block> Auxiliary<B> for () {
 	fn key(&self) -> () { () }
 }
 
+/// Trait that allows conversion into externalities.
+pub trait AsExternalities<E: ?Sized> {
+	/// Turn this object into externalities.
+	fn as_externalities(&mut self) -> &mut E;
+}
+
 /// Null externalities.
 pub trait NullExternalities { }
 
 impl NullExternalities for () { }
+impl AsExternalities<dyn NullExternalities> for () {
+	fn as_externalities(&mut self) -> &mut (dyn NullExternalities + 'static) {
+		self
+	}
+}
 
 /// Externalities for reading a key value based storage.
 pub trait StorageExternalities<Error> {
