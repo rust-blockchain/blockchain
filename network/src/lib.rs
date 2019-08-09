@@ -1,11 +1,4 @@
-pub mod depth;
-pub mod difficulty;
-
-pub trait StatusProducer {
-	type Status: Ord + Encode + Decode;
-
-	fn generate(&self) -> Self::Status;
-}
+pub mod sync;
 
 pub trait NetworkEnvironment {
 	type PeerId;

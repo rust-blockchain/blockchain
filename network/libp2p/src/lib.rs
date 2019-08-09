@@ -1,8 +1,7 @@
 use core::fmt::Debug;
-use core::marker::PhantomData;
 use core::time::Duration;
 use core::ops::DerefMut;
-use codec::{Encode, Decode};
+use parity_codec::{Encode, Decode};
 use libp2p::{identity, NetworkBehaviour, PeerId};
 use libp2p::mdns::Mdns;
 use libp2p::floodsub::{Floodsub, Topic, TopicBuilder};
@@ -13,10 +12,11 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_timer::Interval;
 use blockchain::backend::{SharedCommittable, ChainQuery, ImportLock};
 use blockchain::import::BlockImporter;
-use crate::{SimpleSyncMessage, SimpleSync, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
+use blockchain_network::{NetworkEnvironment, NetworkHandle, NetworkEvent};
+use blockchain_network::sync::{NetworkSyncMessage, NetworkSync, StatusProducer};
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "(PeerId, SimpleSyncMessage<B, S>)", poll_method = "poll")]
+#[behaviour(out_event = "(PeerId, NetworkSyncMessage<B, S>)", poll_method = "poll")]
 struct Behaviour<TSubstream: AsyncRead + AsyncWrite, B, S> {
 	floodsub: Floodsub<TSubstream>,
 	kademlia: Kademlia<TSubstream>,
@@ -25,11 +25,11 @@ struct Behaviour<TSubstream: AsyncRead + AsyncWrite, B, S> {
 	#[behaviour(ignore)]
 	topic: Topic,
 	#[behaviour(ignore)]
-	events: Vec<(PeerId, SimpleSyncMessage<B, S>)>,
+	events: Vec<(PeerId, NetworkSyncMessage<B, S>)>,
 }
 
 impl<TSubstream: AsyncRead + AsyncWrite, B, S> Behaviour<TSubstream, B, S> {
-	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, (PeerId, SimpleSyncMessage<B, S>)>> {
+	fn poll<TEv>(&mut self) -> Async<NetworkBehaviourAction<TEv, (PeerId, NetworkSyncMessage<B, S>)>> {
 		if !self.events.is_empty() {
 			return Async::Ready(NetworkBehaviourAction::GenerateEvent(self.events.remove(0)))
 		}
@@ -40,18 +40,18 @@ impl<TSubstream: AsyncRead + AsyncWrite, B, S> Behaviour<TSubstream, B, S> {
 
 impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkEnvironment for Behaviour<TSubstream, B, S> {
 	type PeerId = PeerId;
-	type Message = SimpleSyncMessage<B, S>;
+	type Message = NetworkSyncMessage<B, S>;
 }
 
 impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkHandle for Behaviour<TSubstream, B, S>  where
 	B: Encode,
 	S: Encode,
 {
-	fn send(&mut self, _peer: &PeerId, message: SimpleSyncMessage<B, S>) {
+	fn send(&mut self, _peer: &PeerId, message: NetworkSyncMessage<B, S>) {
 		self.floodsub.publish(&self.topic, message.encode());
 	}
 
-	fn broadcast(&mut self, message: SimpleSyncMessage<B, S>) {
+	fn broadcast(&mut self, message: NetworkSyncMessage<B, S>) {
 		self.floodsub.publish(&self.topic, message.encode());
 	}
 }
@@ -62,7 +62,7 @@ impl<TSubstream: AsyncRead + AsyncWrite, B, S> NetworkBehaviourEventProcess<libp
 {
 	fn inject_event(&mut self, floodsub_message: libp2p::floodsub::FloodsubEvent) {
 		if let libp2p::floodsub::FloodsubEvent::Message(floodsub_message) = floodsub_message {
-			let message = SimpleSyncMessage::<B, S>::decode(&mut &floodsub_message.data[..]).unwrap();
+			let message = NetworkSyncMessage::<B, S>::decode(&mut &floodsub_message.data[..]).unwrap();
 
 			self.events.push((floodsub_message.source.clone(), message));
 		}
@@ -119,10 +119,7 @@ pub fn start_network_simple_sync<Ba, I, St>(
 	let transport = libp2p::build_tcp_ws_secio_mplex_yamux(local_key);
 	let topic = TopicBuilder::new("blocks").build();
 
-	let mut sync = SimpleSync {
-		backend, importer, status, import_lock,
-		_marker: PhantomData,
-	};
+	let mut sync = NetworkSync::new(backend, import_lock, importer, status);
 
 	let mut swarm = {
 		let mut behaviour = Behaviour {

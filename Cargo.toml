@@ -11,7 +11,8 @@ blockchain-core = { version = "0.1", path = "core" }
 
 [workspace]
 members = [
-	"libp2p",
 	"network",
+	"network/libp2p",
+	"network/local",
 	"examples/counter",
 ]

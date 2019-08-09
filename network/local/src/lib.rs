@@ -2,24 +2,24 @@ use std::collections::HashMap;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use std::sync::{Arc, mpsc::{SyncSender, Receiver, sync_channel}};
-use core::marker::PhantomData;
 use core::hash::Hash;
 use core::fmt::Debug;
 use blockchain::backend::{SharedCommittable, ChainQuery, ImportLock};
 use blockchain::import::BlockImporter;
-use crate::{SimpleSync, SimpleSyncMessage, NetworkEnvironment, NetworkHandle, NetworkEvent, StatusProducer};
+use blockchain_network::{NetworkEnvironment, NetworkHandle, NetworkEvent};
+use blockchain_network::sync::{NetworkSync, NetworkSyncMessage, StatusProducer};
 
 pub struct LocalNetwork<P, B, S> {
-	senders: HashMap<P, SyncSender<(P, SimpleSyncMessage<B, S>)>>,
+	senders: HashMap<P, SyncSender<(P, NetworkSyncMessage<B, S>)>>,
 }
 
 impl<P: Eq + Hash + Clone, B: Clone, S: Clone> LocalNetwork<P, B, S> {
-	pub fn send(&self, peer: &P, message: (P, SimpleSyncMessage<B, S>)) {
+	pub fn send(&self, peer: &P, message: (P, NetworkSyncMessage<B, S>)) {
 		self.senders.get(peer).unwrap()
 			.send(message).unwrap();
 	}
 
-	pub fn broadcast(&self, message: (P, SimpleSyncMessage<B, S>)) {
+	pub fn broadcast(&self, message: (P, NetworkSyncMessage<B, S>)) {
 		for sender in self.senders.values() {
 			sender.send(message.clone()).unwrap();
 		}
@@ -34,22 +34,22 @@ pub struct LocalNetworkHandle<P, B, S> {
 
 impl<P, B, S> NetworkEnvironment for LocalNetworkHandle<P, B, S> {
 	type PeerId = P;
-	type Message = SimpleSyncMessage<B, S>;
+	type Message = NetworkSyncMessage<B, S>;
 }
 
 impl<P: Eq + Hash + Clone, B: Clone, S: Clone> NetworkHandle for LocalNetworkHandle<P, B, S> {
-	fn send(&mut self, peer: &P, message: SimpleSyncMessage<B, S>) {
+	fn send(&mut self, peer: &P, message: NetworkSyncMessage<B, S>) {
 		self.network.send(peer, (self.peer_id.clone(), message));
 	}
 
-	fn broadcast(&mut self, message: SimpleSyncMessage<B, S>) {
+	fn broadcast(&mut self, message: NetworkSyncMessage<B, S>) {
 		self.network.broadcast((self.peer_id.clone(), message));
 	}
 }
 
 pub fn start_local_simple_peer<P, Ba, I, St>(
 	mut handle: LocalNetworkHandle<P, Ba::Block, St::Status>,
-	receiver: Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>,
+	receiver: Receiver<(P, NetworkSyncMessage<Ba::Block, St::Status>)>,
 	peer_id: P,
 	backend: Ba,
 	import_lock: ImportLock,
@@ -66,10 +66,7 @@ pub fn start_local_simple_peer<P, Ba, I, St>(
 	thread::spawn(move || {
 		let this_peer_id = peer_id.clone();
 
-		let mut sync = SimpleSync {
-			backend, importer, status, import_lock,
-			_marker: PhantomData
-		};
+		let mut sync = NetworkSync::new(backend, import_lock, importer, status);
 
 		loop {
 			for (peer_id, message) in receiver.try_iter() {
@@ -94,8 +91,8 @@ pub fn start_local_simple_sync<P, Ba, I, St>(
 	St: StatusProducer + Send + Sync + 'static,
 	St::Status: Clone + Debug + Send + Sync,
 {
-	let mut senders: HashMap<P, SyncSender<(P, SimpleSyncMessage<Ba::Block, St::Status>)>> = HashMap::new();
-	let mut peers_with_receivers: HashMap<P, (Ba, ImportLock, I, St, Receiver<(P, SimpleSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
+	let mut senders: HashMap<P, SyncSender<(P, NetworkSyncMessage<Ba::Block, St::Status>)>> = HashMap::new();
+	let mut peers_with_receivers: HashMap<P, (Ba, ImportLock, I, St, Receiver<(P, NetworkSyncMessage<Ba::Block, St::Status>)>)> = HashMap::new();
 	for (peer_id, (backend, import_lock, importer, status)) in peers {
 		let (sender, receiver) = sync_channel(10);
 		senders.insert(peer_id.clone(), sender);

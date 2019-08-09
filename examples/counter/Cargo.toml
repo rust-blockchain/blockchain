@@ -8,6 +8,6 @@ edition = "2018"
 primitive-types = { version = "0.4", features = ["codec"] }
 parity-codec = { version = "4.0", features = ["derive"] }
 blockchain = { version = "0.9", path = "../.." }
-blockchain-network-simple = { version = "0.5", path = "../../network/simple" }
+blockchain-network = { version = "0.1", path = "../../network" }
 sha3 = "0.8"
 clap = "2.33"
