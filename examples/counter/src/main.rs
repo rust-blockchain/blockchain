@@ -93,7 +93,6 @@ fn libp2p_sync(port: &str, author: bool) {
 	blockchain_network_simple::libp2p::start_network_simple_sync(port, backend, lock, importer, status);
 }
 
-
 fn builder_thread(backend_build: SharedMemoryBackend<Block, (), KeyValueMemoryState>, lock: ImportLock) {
 	loop {
 		let head = backend_build.head();

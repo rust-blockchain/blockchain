@@ -36,7 +36,12 @@ impl<'a, Ba: Store> ImportAction<'a, Ba> where
 
 	/// Import a new block.
 	pub fn import_block(&mut self, block: Ba::Block, state: Ba::State) {
-		self.pending.import_block.push(ImportOperation { block, state });
+		self.import_raw(ImportOperation { block, state });
+	}
+
+	/// Import a raw operation.
+	pub fn import_raw(&mut self, raw: ImportOperation<Ba::Block, Ba::State>) {
+		self.pending.import_block.push(raw);
 	}
 
 	/// Set head to given hash.
