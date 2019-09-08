@@ -9,3 +9,4 @@ blockchain = { version = "0.9", path = ".." }
 futures-preview = "=0.3.0-alpha.18"
 futures-timer = "0.4"
 log = "0.4"
+rand = "0.7"

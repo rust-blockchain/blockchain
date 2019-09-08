@@ -3,13 +3,14 @@ use core::task::{Context, Poll, Waker};
 use core::pin::Pin;
 use core::hash::Hash;
 use core::mem;
+use core::time::Duration;
 use std::collections::{HashMap, VecDeque};
 use blockchain::Block;
-use blockchain::backend::ImportLock;
 use blockchain::import::BlockImporter;
 use futures::{Stream, StreamExt};
 use futures_timer::Interval;
 use log::warn;
+use rand::seq::IteratorRandom;
 
 #[derive(Default)]
 pub struct PeerStatus<H> {
@@ -28,15 +29,15 @@ pub enum SyncEvent<P> {
 pub struct SyncConfig {
 	peer_update_frequency: usize,
 	update_frequency: usize,
+	request_timeout: usize,
 }
 
-pub struct Sync<B, P, H, I> {
+pub struct NetworkSync<B, P, H, I> {
 	head_status: (H, usize),
 	tick: usize,
 	peers: HashMap<P, PeerStatus<H>>,
 	pending_blocks: Vec<B>,
 	importer: I,
-	import_lock: ImportLock,
 	waker: Option<Waker>,
 	timer: Interval,
 	pending_events: VecDeque<SyncEvent<P>>,
@@ -44,11 +45,26 @@ pub struct Sync<B, P, H, I> {
 	_marker: PhantomData<B>,
 }
 
-impl<B, P, H, I> Sync<B, P, H, I> where
+impl<B, P, H, I> NetworkSync<B, P, H, I> where
 	P: PartialEq + Eq + Hash,
-	H: Default,
+	H: PartialOrd + Default,
 {
-	pub fn note_blocks(&mut self, mut blocks: Vec<B>, source: Option<P>) {
+	pub fn new(head: H, importer: I, tick_duration: Duration, config: SyncConfig) -> Self {
+		Self {
+			head_status: (head, 0),
+			tick: 0,
+			peers: HashMap::new(),
+			pending_blocks: Vec::new(),
+			importer,
+			waker: None,
+			timer: Interval::new(tick_duration),
+			pending_events: VecDeque::new(),
+			config,
+			_marker: PhantomData,
+		}
+	}
+
+	pub fn note_blocks(&mut self, mut blocks: Vec<B>, _source: Option<P>) {
 		self.pending_blocks.append(&mut blocks);
 		self.wake();
 	}
@@ -71,6 +87,17 @@ impl<B, P, H, I> Sync<B, P, H, I> where
 		self.peers.remove(&peer);
 	}
 
+	pub fn is_syncing(&self) -> bool {
+		for (_, peer_status) in &self.peers {
+			if let Some(peer_head_status) = peer_status.head_status.as_ref() {
+				if peer_head_status.0 > self.head_status.0 {
+					return true
+				}
+			}
+		}
+		false
+	}
+
 	fn wake(&mut self) {
 		if let Some(waker) = self.waker.take() {
 			waker.wake()
@@ -84,9 +111,9 @@ impl<B, P, H, I> Sync<B, P, H, I> where
 	}
 }
 
-impl<B, P, H, I> Stream for Sync<B, P, H, I> where
+impl<B, P, H, I> Stream for NetworkSync<B, P, H, I> where
 	P: PartialEq + Eq + Hash + Clone + Unpin,
-	H: Default + Unpin,
+	H: PartialOrd + Default + Unpin,
 	B: Block + Unpin,
 	I: BlockImporter<Block=B> + Unpin,
 {
@@ -130,6 +157,26 @@ impl<B, P, H, I> Stream for Sync<B, P, H, I> where
 				.unwrap_or(false)
 			{
 				new_events.push(SyncEvent::QueryPeerStatus(peer.clone()));
+			}
+		}
+
+		if self.is_syncing() {
+			let mut need_initialize_new_request = true;
+
+			for (_, status) in &self.peers {
+				if let Some(last_tick) = status.pending_request {
+					if self.tick - last_tick < self.config.request_timeout {
+						need_initialize_new_request = false;
+					}
+				}
+			}
+
+			if need_initialize_new_request {
+				let current_tick = self.tick;
+				if let Some((peer, status)) = self.peers.iter_mut().choose(&mut rand::thread_rng()) {
+					new_events.push(SyncEvent::QueryBlocks(peer.clone()));
+					status.pending_request = Some(current_tick);
+				}
 			}
 		}
 
