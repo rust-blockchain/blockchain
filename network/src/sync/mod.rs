@@ -1,120 +1,146 @@
-mod difficulty;
-mod depth;
-
-pub use self::depth::{BestDepthStatus, BestDepthStatusProducer, BestDepthError, BestDepthImporter};
-
-use parity_codec::{Encode, Decode};
-use blockchain::backend::{ChainQuery, Store, SharedCommittable, ImportLock};
-use blockchain::import::BlockImporter;
 use core::marker::PhantomData;
-use crate::{NetworkHandle, NetworkEnvironment, NetworkEvent};
+use core::task::{Context, Poll, Waker};
+use core::pin::Pin;
+use core::hash::Hash;
+use core::mem;
+use std::collections::{HashMap, VecDeque};
+use blockchain::Block;
+use blockchain::backend::ImportLock;
+use blockchain::import::BlockImporter;
+use futures::{Stream, StreamExt};
+use futures_timer::Interval;
+use log::warn;
 
-pub trait StatusProducer {
-	type Status: Ord + Encode + Decode;
-
-	fn generate(&self) -> Self::Status;
+#[derive(Default)]
+pub struct PeerStatus<H> {
+	head_status: Option<(H, usize)>,
+	pending_request: Option<usize>,
 }
 
-#[derive(Clone, Debug, Encode, Decode)]
-pub enum NetworkSyncMessage<B, S> {
-	Status(S),
-	BlockRequest {
-		start_depth: u64,
-		count: u64,
-	},
-	BlockResponse {
-		blocks: Vec<B>,
-	},
+#[derive(PartialEq, Eq)]
+pub enum SyncEvent<P> {
+	QueryStatus,
+	QueryPeerStatus(P),
+	QueryBlocks(P),
 }
 
-pub struct NetworkSync<P, Ba, I, St> {
-	backend: Ba,
-	import_lock: ImportLock,
+#[derive(PartialEq, Eq)]
+pub struct SyncConfig {
+	peer_update_frequency: usize,
+	update_frequency: usize,
+}
+
+pub struct Sync<B, P, H, I> {
+	head_status: (H, usize),
+	tick: usize,
+	peers: HashMap<P, PeerStatus<H>>,
+	pending_blocks: Vec<B>,
 	importer: I,
-	status: St,
-	_marker: PhantomData<P>,
+	import_lock: ImportLock,
+	waker: Option<Waker>,
+	timer: Interval,
+	pending_events: VecDeque<SyncEvent<P>>,
+	config: SyncConfig,
+	_marker: PhantomData<B>,
 }
 
-impl<P, Ba, I, St> NetworkSync<P, Ba, I, St> {
-	pub fn new(backend: Ba, import_lock: ImportLock, importer: I, status: St) -> Self {
-		Self {
-			backend, import_lock, importer, status,
-			_marker: PhantomData,
+impl<B, P, H, I> Sync<B, P, H, I> where
+	P: PartialEq + Eq + Hash,
+	H: Default,
+{
+	pub fn note_blocks(&mut self, mut blocks: Vec<B>, source: Option<P>) {
+		self.pending_blocks.append(&mut blocks);
+		self.wake();
+	}
+
+	pub fn note_peer_status(&mut self, peer: P, status: H) {
+		self.peers.entry(peer)
+			.or_insert(Default::default())
+			.head_status = Some((status, self.tick));
+	}
+
+	pub fn note_status(&mut self, status: H) {
+		self.head_status = (status, self.tick);
+	}
+
+	pub fn note_connected(&mut self, peer: P) {
+		self.peers.insert(peer, Default::default());
+	}
+
+	pub fn note_disconnected(&mut self, peer: P) {
+		self.peers.remove(&peer);
+	}
+
+	fn wake(&mut self) {
+		if let Some(waker) = self.waker.take() {
+			waker.wake()
+		}
+	}
+
+	fn push_event(&mut self, event: SyncEvent<P>) {
+		if !self.pending_events.contains(&event) {
+			self.pending_events.push_back(event);
 		}
 	}
 }
 
-impl<P, Ba: Store, I, St: StatusProducer> NetworkEnvironment for NetworkSync<P, Ba, I, St> {
-	type PeerId = P;
-	type Message = NetworkSyncMessage<Ba::Block, St::Status>;
-}
+impl<B, P, H, I> Stream for Sync<B, P, H, I> where
+	P: PartialEq + Eq + Hash + Clone + Unpin,
+	H: Default + Unpin,
+	B: Block + Unpin,
+	I: BlockImporter<Block=B> + Unpin,
+{
+	type Item = SyncEvent<P>;
 
-impl<P, Ba: SharedCommittable + ChainQuery, I: BlockImporter<Block=Ba::Block>, St: StatusProducer> NetworkEvent for NetworkSync<P, Ba, I, St> {
-	fn on_tick<H: NetworkHandle>(
-		&mut self, handle: &mut H
-	) where
-		H: NetworkEnvironment<PeerId=Self::PeerId, Message=Self::Message>
-	{
-		let status = self.status.generate();
-		handle.broadcast(NetworkSyncMessage::Status(status));
-	}
+	fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+		self.waker = Some(cx.waker().clone());
 
-	fn on_message<H: NetworkHandle>(
-		&mut self, handle: &mut H, peer: &P, message: Self::Message
-	) where
-		H: NetworkEnvironment<PeerId=Self::PeerId, Message=Self::Message>
-	{
-		match message {
-			NetworkSyncMessage::Status(peer_status) => {
-				let status = self.status.generate();
-				let best_depth = {
-					let best_hash = self.backend.head();
-					self.backend.depth_at(&best_hash)
-						.expect("Best block depth hash cannot fail")
-				};
+		let mut pending_blocks = Vec::new();
+		mem::swap(&mut self.pending_blocks, &mut pending_blocks);
+		for block in pending_blocks {
+			match self.importer.import_block(block) {
+				Ok(()) => (),
+				Err(_) => {
+					warn!("Error happened on block response message");
+				},
+			}
+		}
 
-				if peer_status > status {
-					handle.send(peer, NetworkSyncMessage::BlockRequest {
-						start_depth: best_depth as u64 + 1,
-						count: 256,
-					});
-				}
-			},
-			NetworkSyncMessage::BlockRequest {
-				start_depth,
-				count,
-			} => {
-				let mut ret = Vec::new();
-				{
-					let _ = self.import_lock.lock();
-					for d in start_depth..(start_depth + count) {
-						match self.backend.lookup_canon_depth(d as usize) {
-							Ok(Some(hash)) => {
-								let block = self.backend.block_at(&hash)
-									.expect("Found hash cannot fail");
-								ret.push(block);
-							},
-							_ => break,
-						}
-					}
-				}
-				handle.send(peer, NetworkSyncMessage::BlockResponse {
-					blocks: ret
-				});
-			},
-			NetworkSyncMessage::BlockResponse {
-				blocks,
-			} => {
-				for block in blocks {
-					match self.importer.import_block(block) {
-						Ok(()) => (),
-						Err(_) => {
-							println!("warn: error happened on block response message");
-							break
-						},
-					}
-				}
-			},
+		loop {
+			match self.timer.poll_next_unpin(cx) {
+				Poll::Pending => break,
+				Poll::Ready(Some(())) => {
+					self.tick += 1;
+				},
+				Poll::Ready(None) => {
+					return Poll::Ready(None)
+				},
+			}
+		}
+
+		let mut new_events = Vec::new();
+
+		if self.tick - self.head_status.1 >= self.config.update_frequency {
+			new_events.push(SyncEvent::QueryStatus);
+		}
+
+		for (peer, status) in &self.peers {
+			if status.head_status.as_ref()
+				.map(|h| self.tick - h.1 >= self.config.peer_update_frequency)
+				.unwrap_or(false)
+			{
+				new_events.push(SyncEvent::QueryPeerStatus(peer.clone()));
+			}
+		}
+
+		for event in new_events {
+			self.push_event(event);
+		}
+
+		if let Some(event) = self.pending_events.pop_front() {
+			Poll::Ready(Some(event))
+		} else {
+			Poll::Pending
 		}
 	}
 }
