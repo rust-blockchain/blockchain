@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 blockchain = { version = "0.9", path = ".." }
-parity-codec = { version = "4.0", features = ["derive"] }
 futures-preview = "=0.3.0-alpha.18"
 futures-timer = "0.4"
 log = "0.4"
