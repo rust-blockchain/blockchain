@@ -1,11 +1,9 @@
-use core::marker::PhantomData;
 use core::task::{Context, Poll, Waker};
 use core::pin::Pin;
 use core::hash::Hash;
 use core::mem;
 use core::time::Duration;
 use std::collections::{HashMap, VecDeque};
-use blockchain::Block;
 use blockchain::import::BlockImporter;
 use futures::{Stream, StreamExt};
 use futures_timer::Interval;
@@ -27,25 +25,25 @@ pub enum SyncEvent<P> {
 
 #[derive(PartialEq, Eq)]
 pub struct SyncConfig {
-	peer_update_frequency: usize,
-	update_frequency: usize,
-	request_timeout: usize,
+	pub peer_update_frequency: usize,
+	pub update_frequency: usize,
+	pub request_timeout: usize,
 }
 
-pub struct NetworkSync<B, P, H, I> {
+pub struct NetworkSync<P, H, I: BlockImporter> {
 	head_status: (H, usize),
 	tick: usize,
 	peers: HashMap<P, PeerStatus<H>>,
-	pending_blocks: Vec<B>,
+	pending_blocks: Vec<I::Block>,
 	importer: I,
 	waker: Option<Waker>,
 	timer: Interval,
 	pending_events: VecDeque<SyncEvent<P>>,
 	config: SyncConfig,
-	_marker: PhantomData<B>,
 }
 
-impl<B, P, H, I> NetworkSync<B, P, H, I> where
+impl<P, H, I> NetworkSync<P, H, I> where
+	I: BlockImporter,
 	P: PartialEq + Eq + Hash,
 	H: PartialOrd + Default,
 {
@@ -60,11 +58,10 @@ impl<B, P, H, I> NetworkSync<B, P, H, I> where
 			timer: Interval::new(tick_duration),
 			pending_events: VecDeque::new(),
 			config,
-			_marker: PhantomData,
 		}
 	}
 
-	pub fn note_blocks(&mut self, mut blocks: Vec<B>, _source: Option<P>) {
+	pub fn note_blocks(&mut self, mut blocks: Vec<I::Block>, _source: Option<P>) {
 		self.pending_blocks.append(&mut blocks);
 		self.wake();
 	}
@@ -111,11 +108,11 @@ impl<B, P, H, I> NetworkSync<B, P, H, I> where
 	}
 }
 
-impl<B, P, H, I> Stream for NetworkSync<B, P, H, I> where
+impl<P, H, I> Stream for NetworkSync<P, H, I> where
 	P: PartialEq + Eq + Hash + Clone + Unpin,
 	H: PartialOrd + Default + Unpin,
-	B: Block + Unpin,
-	I: BlockImporter<Block=B> + Unpin,
+	I: BlockImporter + Unpin,
+	I::Block: Unpin,
 {
 	type Item = SyncEvent<P>;
 
