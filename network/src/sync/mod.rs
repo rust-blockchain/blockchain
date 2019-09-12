@@ -10,10 +10,18 @@ use futures_timer::Interval;
 use log::warn;
 use rand::seq::IteratorRandom;
 
-#[derive(Default)]
 pub struct PeerStatus<H> {
 	head_status: Option<(H, usize)>,
 	pending_request: Option<usize>,
+}
+
+impl<H> Default for PeerStatus<H> {
+	fn default() -> Self {
+		Self {
+			head_status: None,
+			pending_request: None,
+		}
+	}
 }
 
 #[derive(PartialEq, Eq)]
@@ -45,7 +53,7 @@ pub struct NetworkSync<P, H, I: BlockImporter> {
 impl<P, H, I> NetworkSync<P, H, I> where
 	I: BlockImporter,
 	P: PartialEq + Eq + Hash,
-	H: PartialOrd + Default,
+	H: PartialOrd,
 {
 	pub fn new(head: H, importer: I, tick_duration: Duration, config: SyncConfig) -> Self {
 		Self {
@@ -110,7 +118,7 @@ impl<P, H, I> NetworkSync<P, H, I> where
 
 impl<P, H, I> Stream for NetworkSync<P, H, I> where
 	P: PartialEq + Eq + Hash + Clone + Unpin,
-	H: PartialOrd + Default + Unpin,
+	H: PartialOrd + Unpin,
 	I: BlockImporter + Unpin,
 	I::Block: Unpin,
 {
