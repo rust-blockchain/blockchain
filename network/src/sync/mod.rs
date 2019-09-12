@@ -7,7 +7,7 @@ use std::collections::{HashMap, VecDeque};
 use blockchain::import::BlockImporter;
 use futures::{Stream, StreamExt};
 use futures_timer::Interval;
-use log::warn;
+use log::*;
 use rand::seq::IteratorRandom;
 
 pub struct PeerStatus<H> {
@@ -47,6 +47,7 @@ pub struct NetworkSync<P, H, I: BlockImporter> {
 	waker: Option<Waker>,
 	timer: Interval,
 	pending_events: VecDeque<SyncEvent<P>>,
+	last_sync: Option<usize>,
 	config: SyncConfig,
 }
 
@@ -65,6 +66,7 @@ impl<P, H, I> NetworkSync<P, H, I> where
 			waker: None,
 			timer: Interval::new(tick_duration),
 			pending_events: VecDeque::new(),
+			last_sync: None,
 			config,
 		}
 	}
@@ -151,37 +153,51 @@ impl<P, H, I> Stream for NetworkSync<P, H, I> where
 		}
 
 		let mut new_events = Vec::new();
+		let current_tick = self.tick;
+		let request_timeout = self.config.request_timeout;
+		let update_frequency = self.config.update_frequency;
+		let peer_update_frequency = self.config.peer_update_frequency;
 
 		if self.tick - self.head_status.1 >= self.config.update_frequency {
 			new_events.push(SyncEvent::QueryStatus);
 		}
 
-		for (peer, status) in &self.peers {
-			if status.head_status.as_ref()
-				.map(|h| self.tick - h.1 >= self.config.peer_update_frequency)
-				.unwrap_or(false)
+		for (peer, status) in &mut self.peers {
+			if let Some(last_tick) = status.pending_request {
+				if current_tick - last_tick >= request_timeout {
+					status.pending_request = None;
+				}
+			}
+
+			if status.pending_request.is_none() && status.head_status.as_ref()
+				.map(|h| current_tick - h.1 >= peer_update_frequency)
+				.unwrap_or(true)
 			{
 				new_events.push(SyncEvent::QueryPeerStatus(peer.clone()));
+				status.pending_request = Some(current_tick);
 			}
 		}
 
 		if self.is_syncing() {
-			let mut need_initialize_new_request = true;
+			let mut need_initialize_new_request = false;
 
 			for (_, status) in &self.peers {
-				if let Some(last_tick) = status.pending_request {
-					if self.tick - last_tick < self.config.request_timeout {
-						need_initialize_new_request = false;
-					}
+				if status.head_status.as_ref().map(|h| h.0 > self.head_status.0).unwrap_or(false) {
+					need_initialize_new_request = true;
 				}
 			}
 
+			need_initialize_new_request = need_initialize_new_request && self.last_sync.map(|l| {
+				current_tick - l >= update_frequency
+			}).unwrap_or(true);
+
 			if need_initialize_new_request {
-				let current_tick = self.tick;
 				if let Some((peer, status)) = self.peers.iter_mut().choose(&mut rand::thread_rng()) {
 					new_events.push(SyncEvent::QueryBlocks(peer.clone()));
 					status.pending_request = Some(current_tick);
 				}
+
+				self.last_sync = Some(self.tick);
 			}
 		}
 
