@@ -122,7 +122,8 @@ impl<P, H, I> Stream for NetworkSync<P, H, I> where
 	P: PartialEq + Eq + Hash + Clone + Unpin,
 	H: PartialOrd + Unpin,
 	I: BlockImporter + Unpin,
-	I::Block: Unpin,
+	I::Block: Clone + Unpin,
+	I::Error: core::fmt::Debug,
 {
 	type Item = SyncEvent<P>;
 
@@ -131,13 +132,30 @@ impl<P, H, I> Stream for NetworkSync<P, H, I> where
 
 		let mut pending_blocks = Vec::new();
 		mem::swap(&mut self.pending_blocks, &mut pending_blocks);
-		for block in pending_blocks {
-			match self.importer.import_block(block) {
-				Ok(()) => (),
-				Err(_) => {
-					warn!("Error happened on block response message");
-				},
+		let mut pending_blocks = pending_blocks.into_iter().map(|v| Some(v)).collect::<Vec<_>>();
+
+		loop {
+			let mut progress = false;
+
+			for block in &mut pending_blocks {
+				if let Some(sblock) = block {
+					match self.importer.import_block(sblock.clone()) {
+						Ok(()) => {
+							*block = None;
+							progress = true;
+						},
+						Err(_) => (),
+					}
+				}
 			}
+
+			if !progress {
+				break
+			}
+		}
+
+		if !pending_blocks.is_empty() {
+			warn!("{} blocks cannot be imported", pending_blocks.len());
 		}
 
 		loop {
