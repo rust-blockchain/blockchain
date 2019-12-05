@@ -157,8 +157,9 @@ impl<P, H, I> Stream for NetworkSync<P, H, I> where
 			}
 		}
 
-		if !pending_blocks.is_empty() {
-			warn!("{} blocks cannot be imported", pending_blocks.len());
+		let unimported_blocks = pending_blocks.iter().filter(|v| v.is_some()).count();
+		if unimported_blocks != 0 {
+			warn!("{} blocks cannot be imported", unimported_blocks);
 		}
 
 		loop {
