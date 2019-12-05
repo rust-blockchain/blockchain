@@ -143,8 +143,11 @@ impl<P, H, I> Stream for NetworkSync<P, H, I> where
 						Ok(()) => {
 							*block = None;
 							progress = true;
+							trace!("Imported one block");
 						},
-						Err(_) => (),
+						Err(e) => {
+							warn!("Import block failed: {:?}", e);
+						},
 					}
 				}
 			}
