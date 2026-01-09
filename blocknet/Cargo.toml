@@ -23,7 +23,7 @@ thiserror = "1.0"
 void = "1.0"
 either = "1.11.0"
 smallvec = "1.13.2"
-lru = "0.12.1"
+lru = "0.16.3"
 
 sync-extra = { version = "0.1.0", path = "../util/sync-extra" }
 
